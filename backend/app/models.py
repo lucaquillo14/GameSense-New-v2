@@ -84,8 +84,16 @@ class ProcessRequest(BaseModel):
     mode: AnalysisMode = "max_speed"
 
 
+class SpeedSeriesPoint(BaseModel):
+    time_s: float
+    speed_kmh: float
+
+
 class Metrics(BaseModel):
     player_id: int
+    player_label: str | None = None
+    team_label: str | None = None
+    speed_series: list[SpeedSeriesPoint] = Field(default_factory=list)
     top_speed_kmh: float
     avg_speed_kmh: float
     peak_acceleration_mps2: float
@@ -108,6 +116,8 @@ class ShotEvent(BaseModel):
 
 class ShotMetrics(BaseModel):
     player_id: int
+    player_label: str | None = None
+    team_label: str | None = None
     peak_shot_speed_kmh: float
     avg_shot_speed_kmh: float
     shot_count: int

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.services.calibration import compute_homography
 from app.services.cv_pipeline import ClassicalCvPipeline, ReIdByteTrackPipeline
-from app.services.metrics import compute_metrics, compute_shot_metrics, stabilize_track_points
+from app.services.metrics import build_speed_series, compute_metrics, compute_shot_metrics, stabilize_track_points
 from app.services.shot_detection import detect_shots
 from app.services.storage import get_video_record, update_video_record, video_metadata
 from app.services.team_classification import TeamTemplates
@@ -73,6 +73,8 @@ def process_video(video_id: str) -> None:
                 rejected_track_points=low_confidence_count,
                 raw_point_count=raw_ball_count,
             )
+            metrics["player_label"] = target.get("player_id") or f"Player {player_id}"
+            metrics["team_label"] = target.get("team_label")
         else:
             _set_progress(video_id, record, "tracking", 22, "Tracking selected player with ByteTrack/ReID")
             points = pipeline.track_target(
@@ -97,6 +99,9 @@ def process_video(video_id: str) -> None:
 
             _set_progress(video_id, record, "metrics", 86, "Calculating speed, distance, and confidence")
             metrics = compute_metrics(player_id, points, rejected_jump_count, raw_point_count)
+            metrics["speed_series"] = build_speed_series(points)
+            metrics["player_label"] = target.get("player_id") or f"Player {player_id}"
+            metrics["team_label"] = target.get("team_label")
 
         record["status"] = "complete"
         record["warnings"] = warnings

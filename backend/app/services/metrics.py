@@ -69,6 +69,19 @@ def stabilize_track_points(
     return cleaned, rejected
 
 
+def build_speed_series(points: list[TrackPoint]) -> list[dict]:
+    series: list[dict] = []
+    for previous, current in zip(points, points[1:]):
+        dt = max(current.time_s - previous.time_s, 1e-6)
+        distance = hypot(current.x_m - previous.x_m, current.y_m - previous.y_m)
+        speed_kmh = (distance / dt) * 3.6
+        series.append({
+            "time_s": round(current.time_s, 2),
+            "speed_kmh": round(speed_kmh, 2),
+        })
+    return series
+
+
 def compute_metrics(
     player_id: int,
     points: list[TrackPoint],

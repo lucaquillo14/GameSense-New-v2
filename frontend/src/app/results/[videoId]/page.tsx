@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ProcessingProgress } from "@/components/ProcessingProgress";
+import { ConfidenceDot, SpeedChart } from "@/components/SpeedChart";
+import { WarningBanners } from "@/components/WarningBanners";
 import { getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
-import { Activity, AlertTriangle, Crosshair, Gauge, Loader2, Route, ShieldCheck, Target, Timer, Trophy, Zap } from "lucide-react";
+import { Activity, Crosshair, Gauge, Loader2, Route, Target, Timer, Trophy, Zap } from "lucide-react";
 import { useParams } from "next/navigation";
 
 function isShotMetrics(results: Metrics | ShotMetrics): results is ShotMetrics {
@@ -27,7 +30,6 @@ export default function ResultsPage() {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load results.");
       }
     };
-
     refresh();
     const interval = window.setInterval(refresh, 1500);
     return () => {
@@ -40,19 +42,25 @@ export default function ResultsPage() {
   const analysisMode = result?.mode ?? "max_speed";
   const progress = result?.progress;
   const progressPercent = progress?.percent ?? (result?.status === "complete" ? 100 : 0);
+  const target = result?.target_player as { player_id?: string; team_label?: string } | null | undefined;
 
   const speedMetrics = results && !isShotMetrics(results) ? results : null;
   const shotMetrics = results && isShotMetrics(results) ? results : null;
-  const confidencePercent = Math.round((results?.confidence_score ?? 0) * 100);
+  const confidenceScore = results?.confidence_score ?? 0;
 
-  const speedSeries = useMemo(
-    () => [
-      { label: "Top", value: speedMetrics?.top_speed_kmh ?? 0, max: 38 },
-      { label: "Avg", value: speedMetrics?.avg_speed_kmh ?? 0, max: 20 },
-      { label: "Sprint", value: speedMetrics?.sprint_distance_m ?? 0, max: Math.max(speedMetrics?.total_distance_m ?? 1, 1) },
-    ],
-    [speedMetrics],
-  );
+  const playerLabel =
+    speedMetrics?.player_label ??
+    shotMetrics?.player_label ??
+    (target?.player_id as string | undefined) ??
+    "Player";
+  const teamLabel = speedMetrics?.team_label ?? shotMetrics?.team_label ?? (target?.team_label as string | undefined);
+
+  const frameLabel =
+    progress?.message && progress.message.includes("frame")
+      ? progress.message
+      : progress?.stage === "tracking"
+        ? progress.message
+        : undefined;
 
   useEffect(() => {
     if (!shotMetrics?.best_shot) {
@@ -72,262 +80,164 @@ export default function ResultsPage() {
     };
   }, [shotMetrics?.best_shot, videoId]);
 
+  const sortedShots = useMemo(
+    () => (shotMetrics ? [...shotMetrics.shots].sort((a, b) => b.ball_speed_kmh - a.ball_speed_kmh) : []),
+    [shotMetrics],
+  );
+
   return (
     <AppShell>
-      <section className="mx-auto max-w-7xl px-5 py-7">
-        <div className="mb-6 flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-sm font-medium text-slate-300">
-              <Trophy size={15} className="text-cyan-300" />
-              Results
-            </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-white">Performance dashboard</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Status: {result?.status ?? "loading"}
-              {result?.status === "complete" && (
-                <span className="text-slate-500"> · {analysisMode === "max_shot_power" ? "Max Shot Power" : "Max Speed"}</span>
-              )}
-            </p>
+      <section className="analytics-grid mx-auto max-w-7xl px-5 py-8 fade-in">
+        <div className="mb-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-sm text-[#64748b]">
+            <Trophy size={15} className="text-[#3b82f6]" />
+            Results
           </div>
-          {(result?.status === "processing" || !result) && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-300 shadow-sm">
-              <div className="flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin text-cyan-300" />
-                {progress?.message ?? "Processing video"}
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-cyan-300 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
-              </div>
-            </div>
-          )}
+          <h1 className="mt-3 text-3xl font-semibold text-[#f1f5f9]">Performance dashboard</h1>
+          <p className="mt-1 text-sm text-[#64748b]">
+            {result?.status ?? "loading"}
+            {teamLabel ? ` · ${playerLabel} — ${teamLabel}` : playerLabel ? ` · ${playerLabel}` : ""}
+          </p>
         </div>
 
-        {error && <Notice tone="error" message={error} />}
-        {result?.warnings?.map((warning) => <Notice key={warning} tone="warn" message={warning} />)}
-
-        {speedMetrics && analysisMode !== "max_shot_power" ? (
-          <>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard icon={<Gauge size={19} />} label="Top speed" value={`${speedMetrics.top_speed_kmh} km/h`} emphasis="cyan" />
-              <MetricCard icon={<Activity size={19} />} label="Average speed" value={`${speedMetrics.avg_speed_kmh} km/h`} />
-              <MetricCard icon={<Route size={19} />} label="Total distance" value={`${speedMetrics.total_distance_m} m`} />
-              <MetricCard icon={<ShieldCheck size={19} />} label="Confidence" value={`${confidencePercent}%`} emphasis="green" />
-              <MetricCard icon={<Timer size={19} />} label="Peak acceleration" value={`${speedMetrics.peak_acceleration_mps2} m/s^2`} />
-              <MetricCard icon={<Timer size={19} />} label="Avg acceleration" value={`${speedMetrics.avg_acceleration_mps2} m/s^2`} />
-              <MetricCard icon={<Route size={19} />} label="Active distance" value={`${speedMetrics.active_distance_m} m`} />
-              <MetricCard icon={<Zap size={19} />} label="Sprint distance" value={`${speedMetrics.sprint_distance_m} m`} />
-            </div>
-
-            <div className="mt-6 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
-              <section className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                    <Zap size={18} className="text-cyan-300" />
-                    Movement profile
-                  </div>
-                  <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-slate-400">{speedMetrics.usable_track_points} points</span>
-                </div>
-                <div className="space-y-4">
-                  {speedSeries.map((item) => (
-                    <BarRow key={item.label} label={item.label} value={item.value} max={item.max} />
-                  ))}
-                </div>
-                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <MiniStat label="Sprints" value={speedMetrics.sprint_count} />
-                  <MiniStat label="Rejected jumps" value={speedMetrics.rejected_jump_count} />
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
-                  <Activity size={18} className="text-cyan-300" />
-                  Tracking quality
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <QualityTile label="Confidence" value={`${confidencePercent}%`} tone={confidencePercent >= 70 ? "good" : confidencePercent >= 45 ? "warn" : "bad"} />
-                  <QualityTile label="Track points" value={speedMetrics.usable_track_points.toString()} tone="neutral" />
-                  <QualityTile label="ID stability" value={speedMetrics.rejected_jump_count === 0 ? "Clean" : "Guarded"} tone={speedMetrics.rejected_jump_count === 0 ? "good" : "warn"} />
-                </div>
-                <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/45 p-4 text-sm leading-6 text-slate-400">
-                  Tracking uses YOLO person detections with ByteTrack IDs and an appearance-based recovery guard for post-occlusion ID switches.
-                </div>
-              </section>
-            </div>
-          </>
-        ) : shotMetrics && analysisMode === "max_shot_power" ? (
-          <>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <MetricCard icon={<Gauge size={19} />} label="Peak shot speed" value={`${shotMetrics.peak_shot_speed_kmh} km/h`} emphasis="cyan" />
-              <MetricCard icon={<Activity size={19} />} label="Average shot speed" value={`${shotMetrics.avg_shot_speed_kmh} km/h`} />
-              <MetricCard icon={<Target size={19} />} label="Shots detected" value={`${shotMetrics.shot_count}`} />
-              <MetricCard icon={<ShieldCheck size={19} />} label="Confidence" value={`${confidencePercent}%`} emphasis="green" />
-            </div>
-
-            <div className="mt-6 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-              <section className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
-                <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
-                  <Crosshair size={18} className="text-cyan-300" />
-                  Best shot
-                </div>
-                {shotMetrics.best_shot ? (
-                  <div>
-                    {bestShotFrameUrl ? (
-                      <img
-                        src={bestShotFrameUrl}
-                        alt="Best shot contact frame"
-                        className="aspect-video w-full rounded-lg border border-white/10 object-cover"
-                      />
-                    ) : (
-                      <div className="grid aspect-video place-items-center rounded-lg border border-white/10 bg-slate-950/45 text-sm text-slate-500">
-                        Loading frame…
-                      </div>
-                    )}
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <MiniStat label="Exit speed" value={shotMetrics.best_shot.ball_speed_kmh} suffix=" km/h" />
-                      <MiniStat label="Timestamp" value={shotMetrics.best_shot.timestamp_s} suffix=" s" decimals={2} />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4 text-sm text-slate-500">
-                    No shots were detected in this clip.
-                  </div>
-                )}
-              </section>
-
-              <section className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-200">
-                    <Target size={18} className="text-cyan-300" />
-                    All detected shots
-                  </div>
-                  <span className="rounded-full bg-white/8 px-2.5 py-1 text-xs text-slate-400">{shotMetrics.usable_track_points} ball points</span>
-                </div>
-                {shotMetrics.shots.length > 0 ? (
-                  <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
-                    {shotMetrics.shots.map((shot, index) => (
-                      <div
-                        key={`${shot.frame_id}-${index}`}
-                        className="flex items-center justify-between rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2.5 text-sm"
-                      >
-                        <div>
-                          <div className="font-semibold text-white">Shot {index + 1}</div>
-                          <div className="text-xs text-slate-500">
-                            Frame {shot.frame_id} · {shot.timestamp_s.toFixed(2)}s
-                          </div>
-                        </div>
-                        <div className="text-lg font-semibold tabular-nums text-cyan-300">{shot.ball_speed_kmh} km/h</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4 text-sm text-slate-500">
-                    Shot list will populate when ball contacts are found near the selected player.
-                  </div>
-                )}
-                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <MiniStat label="Ball track points" value={shotMetrics.usable_track_points} />
-                  <MiniStat label="Low-confidence frames" value={shotMetrics.rejected_track_points} />
-                </div>
-              </section>
-            </div>
-          </>
-        ) : (
-          <div className="grid min-h-80 place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-500">
-            {result?.status === "failed" ? "Processing failed." : "Metrics will appear here when processing completes."}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
           </div>
         )}
+
+        <WarningBanners warnings={result?.warnings ?? []} />
+
+        {(result?.status === "processing" || !result) && (
+          <ProcessingProgress
+            stage={progress?.stage}
+            percent={progressPercent}
+            message={progress?.message}
+            frameLabel={frameLabel}
+          />
+        )}
+
+        {speedMetrics && analysisMode !== "max_shot_power" ? (
+          <div className="mt-6 space-y-5">
+            <div className="card p-6">
+              <p className="text-sm text-[#64748b]">Top speed</p>
+              <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">{speedMetrics.top_speed_kmh}</span>
+                  <span className="ml-2 text-xl text-[#64748b]">km/h</span>
+                </div>
+                <ConfidenceDot score={confidenceScore} />
+              </div>
+              <p className="mt-2 text-sm text-[#64748b]">
+                {playerLabel}
+                {teamLabel ? ` · ${teamLabel}` : ""}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard icon={<Activity size={18} />} label="Average speed" value={`${speedMetrics.avg_speed_kmh} km/h`} />
+              <MetricCard icon={<Route size={18} />} label="Total distance" value={`${speedMetrics.total_distance_m} m`} />
+              <MetricCard icon={<Zap size={18} />} label="Sprint count" value={`${speedMetrics.sprint_count}`} />
+              <MetricCard icon={<Route size={18} />} label="Sprint distance" value={`${speedMetrics.sprint_distance_m} m`} />
+            </div>
+
+            <div className="card p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[#f1f5f9]">Speed over time</h2>
+                <span className="text-xs text-[#64748b]">{speedMetrics.usable_track_points} track points</span>
+              </div>
+              <SpeedChart data={speedMetrics.speed_series ?? []} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <MetricCard icon={<Timer size={18} />} label="Peak acceleration" value={`${speedMetrics.peak_acceleration_mps2} m/s²`} />
+              <MetricCard icon={<Gauge size={18} />} label="Active distance" value={`${speedMetrics.active_distance_m} m`} />
+            </div>
+          </div>
+        ) : shotMetrics && analysisMode === "max_shot_power" ? (
+          <div className="mt-6 space-y-5">
+            <div className="card p-6">
+              <p className="text-sm text-[#64748b]">Peak shot speed</p>
+              <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">{shotMetrics.peak_shot_speed_kmh}</span>
+                  <span className="ml-2 text-xl text-[#64748b]">km/h</span>
+                </div>
+                <ConfidenceDot score={confidenceScore} />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <MetricCard icon={<Target size={18} />} label="Shots detected" value={`${shotMetrics.shot_count}`} />
+              <MetricCard
+                icon={<Crosshair size={18} />}
+                label="Best shot"
+                value={
+                  shotMetrics.best_shot
+                    ? `${shotMetrics.best_shot.ball_speed_kmh} km/h @ ${shotMetrics.best_shot.timestamp_s.toFixed(1)}s`
+                    : "—"
+                }
+              />
+            </div>
+
+            {shotMetrics.best_shot && bestShotFrameUrl && (
+              <img
+                src={bestShotFrameUrl}
+                alt="Best shot frame"
+                className="card aspect-video w-full object-cover"
+              />
+            )}
+
+            <div className="card p-5">
+              <h2 className="mb-4 text-sm font-semibold text-[#f1f5f9]">All shots (by speed)</h2>
+              {sortedShots.length ? (
+                <div className="space-y-2">
+                  {sortedShots.map((shot, index) => (
+                    <div
+                      key={`${shot.frame_id}-${index}`}
+                      className="flex items-center justify-between rounded-lg border border-[#ffffff14] bg-[#0a0a0f] px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-semibold text-[#f1f5f9]">#{index + 1} · Frame {shot.frame_id}</p>
+                        <p className="text-xs text-[#64748b]">{shot.timestamp_s.toFixed(2)}s</p>
+                      </div>
+                      <span className="text-lg font-bold tabular-nums text-[#3b82f6]">{shot.ball_speed_kmh} km/h</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-[#ffffff14] bg-[#0a0a0f] p-6 text-center text-sm text-[#64748b]">
+                  <p className="font-medium text-[#f1f5f9]">No shots detected</p>
+                  <p className="mt-2">
+                    Check that you selected the correct player and that the clip includes visible shots with enough length.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : result?.status === "failed" ? (
+          <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#64748b]">
+            Processing failed. Try re-uploading or selecting a clearer player frame.
+          </div>
+        ) : result?.status !== "processing" ? (
+          <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#64748b]">
+            <Loader2 className="mb-3 animate-spin text-[#3b82f6]" size={24} />
+            Metrics will appear when processing completes.
+          </div>
+        ) : null}
       </section>
     </AppShell>
   );
 }
 
-function MetricCard({
-  icon,
-  label,
-  value,
-  emphasis = "default",
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  emphasis?: "default" | "cyan" | "green";
-}) {
-  const color = emphasis === "cyan" ? "text-cyan-300" : emphasis === "green" ? "text-emerald-300" : "text-slate-400";
+function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-sm">
-      <div className={`flex items-center gap-2 text-sm font-medium ${color}`}>
-        {icon}
+    <div className="card p-4">
+      <div className="flex items-center gap-2 text-sm text-[#64748b]">
+        <span className="text-[#3b82f6]">{icon}</span>
         {label}
       </div>
-      <div className="mt-3 text-2xl font-semibold tracking-normal text-white">{value}</div>
-    </div>
-  );
-}
-
-function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
-  const width = `${Math.min(Math.max((value / max) * 100, 2), 100)}%`;
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-sm">
-        <span className="text-slate-400">{label}</span>
-        <span className="font-semibold tabular-nums text-white">{value.toFixed(value % 1 ? 1 : 0)}</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-cyan-300 transition-all duration-700" style={{ width }} />
-      </div>
-    </div>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  suffix = "",
-  decimals = 0,
-}: {
-  label: string;
-  value: number;
-  suffix?: string;
-  decimals?: number;
-}) {
-  const formatted = decimals > 0 ? value.toFixed(decimals) : value.toString();
-  return (
-    <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
-      <div className="text-xl font-semibold tabular-nums text-white">
-        {formatted}
-        {suffix}
-      </div>
-      <div className="text-xs text-slate-500">{label}</div>
-    </div>
-  );
-}
-
-function QualityTile({ label, value, tone }: { label: string; value: string; tone: "good" | "warn" | "bad" | "neutral" }) {
-  const toneClass =
-    tone === "good"
-      ? "text-emerald-300"
-      : tone === "warn"
-        ? "text-amber-200"
-        : tone === "bad"
-          ? "text-red-200"
-          : "text-cyan-300";
-  return (
-    <div className="rounded-lg border border-white/10 bg-slate-950/40 p-3">
-      <div className={`text-xl font-semibold tabular-nums ${toneClass}`}>{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
-    </div>
-  );
-}
-
-function Notice({ tone, message }: { tone: "warn" | "error"; message: string }) {
-  return (
-    <div
-      className={`mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-        tone === "error" ? "border-red-400/25 bg-red-500/10 text-red-200" : "border-amber-300/25 bg-amber-300/10 text-amber-100"
-      }`}
-    >
-      <AlertTriangle size={16} />
-      {message}
+      <p className="mt-2 text-2xl font-semibold tabular-nums text-[#f1f5f9]">{value}</p>
     </div>
   );
 }

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { SetupCanvas } from "@/components/SetupCanvas";
-import { getFrameDetections, getResults, mediaUrl, processVideo, selectPlayer, setPitchPolygon } from "@/lib/api";
-import type { AnalysisMode, Detection, Point, VideoMetadata } from "@/lib/api";
+import { getFrameDetections, getResults, isPlayerDetection, mediaUrl, processVideo, selectPlayer, setPitchPolygon } from "@/lib/api";
+import type { AnalysisMode, Detection, Point, TeamClassificationInfo, VideoMetadata } from "@/lib/api";
 import {
   CheckCircle2,
   Crosshair,
@@ -41,6 +41,7 @@ export default function SetupPage() {
   const [busy, setBusy] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [teamClassification, setTeamClassification] = useState<TeamClassificationInfo | null>(null);
 
   useEffect(() => {
     getResults(videoId)
@@ -48,6 +49,7 @@ export default function SetupPage() {
         setSourceUrl(mediaUrl(result.source_url));
         setFrameId(result.setup_frame_id ?? 0);
         setMetadata(result.video_metadata ?? null);
+        setTeamClassification(result.team_classification ?? null);
         const target = result.target_player as { click?: Point; bbox?: Detection["bbox"]; detection_id?: string } | null;
         if (target?.click) setPlayerPoint(target.click);
         if (target?.bbox) {
@@ -79,7 +81,7 @@ export default function SetupPage() {
   }, [frameId, videoId]);
 
   const ready = useMemo(() => Boolean(playerPoint), [playerPoint]);
-  const playerCount = detections.filter((detection) => detection.label === "player").length;
+  const playerCount = detections.filter(isPlayerDetection).length;
   const ballCount = detections.filter((detection) => detection.label === "ball").length;
 
   async function confirmSetup() {
@@ -108,20 +110,27 @@ export default function SetupPage() {
       <section className="mx-auto max-w-7xl px-5 py-7">
         <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-sm font-medium text-slate-300">
-              <Target size={15} className="text-cyan-300" />
-              Video setup
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-sm text-[#64748b]">
+              <Target size={15} className="text-[#3b82f6]" />
+              Player selection
             </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-white">Lock on to the player.</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-              Pause at the cleanest frame, click the detected player box, then add calibration points if the pitch is visible.
+            <h1 className="mt-3 text-3xl font-semibold text-[#f1f5f9]">Select your target player</h1>
+            <p className="mt-2 max-w-3xl text-sm text-[#64748b]">
+              Boxes are coloured by team. Click a player to highlight them, then choose an analysis mode.
             </p>
+            {metadata && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <MetaPill label={`${metadata.width}×${metadata.height}`} />
+                <MetaPill label={`${metadata.fps} fps`} />
+                <MetaPill label={`${metadata.duration_s.toFixed(1)}s`} />
+              </div>
+            )}
           </div>
           <button
             type="button"
             disabled={!ready || busy}
             onClick={confirmSetup}
-            className="flex items-center justify-center gap-2 rounded-lg bg-cyan-400 px-5 py-3 font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
+            className="btn-primary flex items-center justify-center gap-2 px-5 py-3 disabled:cursor-not-allowed"
           >
             {busy ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} />}
             Start analysis
@@ -129,7 +138,7 @@ export default function SetupPage() {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-          <aside className="rounded-lg border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
+          <aside className="card p-4">
             <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">Workflow</div>
             <div className="mt-3 grid gap-2">
               <ModeButton active={mode === "player"} onClick={() => setMode("player")} icon={<MousePointer2 size={17} />} label="Select player" />
@@ -220,6 +229,7 @@ export default function SetupPage() {
                 onGoalLeft={setGoalLeft}
                 onGoalRight={setGoalRight}
                 onRemovePitchPoint={(index) => setPitchPolygonState((points) => points.filter((_, pointIndex) => pointIndex !== index))}
+                teamClassification={teamClassification}
               />
             ) : (
               <div className="grid aspect-video place-items-center rounded-lg border border-white/10 bg-white/[0.04]">
@@ -298,9 +308,17 @@ function StatusRow({ label, value, done }: { label: string; value: string; done:
 
 function StatPill({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/6 p-3">
-      <div className="text-xl font-semibold tabular-nums text-white">{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded-lg border border-[#ffffff14] bg-[#0a0a0f] p-3">
+      <div className="text-xl font-semibold tabular-nums text-[#f1f5f9]">{value}</div>
+      <div className="text-xs text-[#64748b]">{label}</div>
     </div>
+  );
+}
+
+function MetaPill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1 text-xs text-[#f1f5f9]">
+      {label}
+    </span>
   );
 }

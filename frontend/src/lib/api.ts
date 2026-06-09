@@ -3,12 +3,27 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:80
 export type Point = { x: number; y: number };
 export type BoundingBox = { x: number; y: number; width: number; height: number };
 
+export type TeamColor = { r: number; g: number; b: number };
+
 export type Detection = {
   id: string;
-  label: "player" | "ball" | string;
+  label: "player" | "ball" | "team_a" | "team_b" | string;
   confidence: number;
   bbox: BoundingBox;
+  team?: "team_a" | "team_b";
+  team_label?: "Team A" | "Team B";
+  team_color?: TeamColor;
+  player_id?: string;
 };
+
+export type TeamClassificationInfo = {
+  team_a: { histogram: number[]; display_color: TeamColor };
+  team_b: { histogram: number[]; display_color: TeamColor };
+  calibration_frames: number;
+  referee_distance_threshold: number;
+};
+
+export type SpeedSeriesPoint = { time_s: number; speed_kmh: number };
 
 export type UploadResponse = {
   video_id: string;
@@ -30,6 +45,9 @@ export type AnalysisMode = "max_speed" | "max_shot_power";
 
 export type Metrics = {
   player_id: number;
+  player_label?: string;
+  team_label?: string;
+  speed_series?: SpeedSeriesPoint[];
   top_speed_kmh: number;
   avg_speed_kmh: number;
   peak_acceleration_mps2: number;
@@ -52,6 +70,8 @@ export type ShotEvent = {
 
 export type ShotMetrics = {
   player_id: number;
+  player_label?: string;
+  team_label?: string;
   peak_shot_speed_kmh: number;
   avg_shot_speed_kmh: number;
   shot_count: number;
@@ -72,6 +92,7 @@ export type VideoResult = {
   source_url?: string | null;
   video_metadata?: VideoMetadata | null;
   target_player?: Record<string, unknown> | null;
+  team_classification?: TeamClassificationInfo | null;
   pitch_setup?: Record<string, unknown> | null;
   results?: Metrics | ShotMetrics | null;
   assets?: {
@@ -85,12 +106,34 @@ export type VideoResult = {
   } | null;
 };
 
+function friendlyError(detail: unknown, status: number): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return "The request was invalid. Check your inputs and try again.";
+  if (status === 404) return "That video could not be found. Try uploading again.";
+  if (status >= 500) return "The server ran into a problem. Please try again in a moment.";
+  return `Something went wrong (${status}). Please try again.`;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `Request failed with ${response.status}`);
+    throw new Error(friendlyError(payload?.detail, response.status));
   }
   return response.json() as Promise<T>;
+}
+
+export function teamColorCss(color?: TeamColor | null): string {
+  if (!color) return "#64748b";
+  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+}
+
+export function isPlayerDetection(detection: Detection): boolean {
+  return Boolean(
+    detection.team ||
+      detection.label === "team_a" ||
+      detection.label === "team_b" ||
+      detection.label === "player",
+  );
 }
 
 export async function uploadVideo(file: File): Promise<UploadResponse> {
