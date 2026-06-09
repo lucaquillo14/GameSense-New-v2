@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #06080d;
+  --surface: #0d1320;
+  --surface-muted: #121a2a;
+  --border: rgba(255, 255, 255, 0.1);
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #22d3ee;
+  --accent-strong: #38bdf8;
+  --pitch: #34d399;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    linear-gradient(135deg, rgba(34, 211, 238, 0.08), transparent 32rem),
+    linear-gradient(180deg, #08101f 0%, #06080d 42rem),
+    var(--background);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI",
+    sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.24);
+}
+
+.field-grid {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    #156f3f;
+  background-size: 52px 52px;
+}
+
+.surface {
+  border: 1px solid var(--border);
+  background: rgba(13, 19, 32, 0.84);
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.28),
+    0 24px 70px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.hairline {
+  border-color: var(--border);
+}
+
+.analytics-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 0.68;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.soft-pulse {
+  animation: soft-pulse 1.8s ease-in-out infinite;
+}
