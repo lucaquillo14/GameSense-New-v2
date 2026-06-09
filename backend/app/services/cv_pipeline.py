@@ -38,10 +38,14 @@ from __future__ import annotations
 # ─────────────────────────────────────────────────────────────────────────────
 
 from pathlib import Path
+from threading import Lock
 from typing import Callable
 
 import cv2
 import numpy as np
+
+_pipeline_lock = Lock()
+_shared_pipeline = None
 
 from app.services.calibration import pixel_to_field
 from app.services.metrics import BallTrackPoint, TrackPoint
@@ -1201,3 +1205,12 @@ def _clip_bbox(bbox, fw, fh):
     right  = min(max(int(round(x+w)), left+1), fw)
     bottom = min(max(int(round(y+h)), top+1),  fh)
     return left, top, right-left, bottom-top
+
+
+def get_cv_pipeline() -> ReIdByteTrackPipeline:
+    global _shared_pipeline
+    if _shared_pipeline is None:
+        with _pipeline_lock:
+            if _shared_pipeline is None:
+                _shared_pipeline = ReIdByteTrackPipeline()
+    return _shared_pipeline

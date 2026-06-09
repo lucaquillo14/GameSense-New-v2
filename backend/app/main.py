@@ -1,5 +1,8 @@
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
+
+_team_calibration_lock = Lock()
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +17,7 @@ from app.models import (
     UploadResponse,
     VideoResult,
 )
-from app.services.cv_pipeline import ClassicalCvPipeline
+from app.services.cv_pipeline import get_cv_pipeline
 from app.services.processing import process_video
 from app.services.team_classification import TeamTemplates
 from app.services.storage import (
@@ -47,13 +50,37 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _calibrate_team_classification(video_id: str) -> None:
+    with _team_calibration_lock:
+        record = get_video_record(video_id)
+        if not record or record.get("team_classification"):
+            return
+        video_path = Path(record["video_path"])
+        templates = get_cv_pipeline().calibrate_team_templates(video_path)
+        record = get_video_record(video_id)
+        if not record:
+            return
+        record["team_classification"] = templates.to_dict()
+        record["progress"] = {
+            "stage": "team_ready",
+            "percent": 3,
+            "message": "Team colours calibrated",
+        }
+        update_video_record(video_id, record)
+
+
 def _ensure_team_classification(video_id: str, record: dict, video_path: Path) -> TeamTemplates:
     cached = record.get("team_classification")
     if cached:
         return TeamTemplates.from_dict(cached)
 
-    pipeline = ClassicalCvPipeline()
-    templates = pipeline.calibrate_team_templates(video_path)
+    _calibrate_team_classification(video_id)
+    record = get_video_record(video_id) or record
+    cached = record.get("team_classification")
+    if cached:
+        return TeamTemplates.from_dict(cached)
+
+    templates = get_cv_pipeline().calibrate_team_templates(video_path)
     record["team_classification"] = templates.to_dict()
     update_video_record(video_id, record)
     return templates
@@ -63,9 +90,9 @@ def _detect_frame(
     video_path: Path,
     frame_id: int,
     team_templates: TeamTemplates | None = None,
-    assign_player_ids: bool = True,
+    assign_player_ids: bool = False,
 ) -> list[dict]:
-    return ClassicalCvPipeline().detect_frame_objects(
+    return get_cv_pipeline().detect_frame_objects(
         video_path,
         frame_id,
         team_templates,
@@ -104,7 +131,7 @@ def _select_detection(detections: list[dict], click: dict, detection_id: str | N
 
 
 @app.post("/upload-video", response_model=UploadResponse)
-async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
+async def upload_video(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()) -> UploadResponse:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".mp4", ".mov"}:
         raise HTTPException(status_code=400, detail="Only mp4 and mov uploads are supported.")
@@ -131,9 +158,10 @@ async def upload_video(file: UploadFile = File(...)) -> UploadResponse:
             "results": None,
             "assets": None,
             "warnings": [],
-            "progress": {"stage": "uploaded", "percent": 0, "message": "Video uploaded"},
+            "progress": {"stage": "uploaded", "percent": 1, "message": "Video uploaded"},
         },
     )
+    background_tasks.add_task(_calibrate_team_classification, video_id)
 
     return UploadResponse(
         video_id=video_id,

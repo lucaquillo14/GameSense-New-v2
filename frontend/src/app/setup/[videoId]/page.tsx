@@ -42,14 +42,23 @@ export default function SetupPage() {
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teamClassification, setTeamClassification] = useState<TeamClassificationInfo | null>(null);
+  const [preparing, setPreparing] = useState(true);
+  const [prepareMessage, setPrepareMessage] = useState("Loading video…");
 
   useEffect(() => {
-    getResults(videoId)
-      .then((result) => {
+    let cancelled = false;
+    let attempts = 0;
+
+    async function bootstrap() {
+      try {
+        const result = await getResults(videoId);
+        if (cancelled) return;
+
         setSourceUrl(mediaUrl(result.source_url));
         setFrameId(result.setup_frame_id ?? 0);
         setMetadata(result.video_metadata ?? null);
         setTeamClassification(result.team_classification ?? null);
+
         const target = result.target_player as { click?: Point; bbox?: Detection["bbox"]; detection_id?: string } | null;
         if (target?.click) setPlayerPoint(target.click);
         if (target?.bbox) {
@@ -60,11 +69,38 @@ export default function SetupPage() {
             bbox: target.bbox,
           });
         }
-      })
-      .catch((err) => setError(err.message));
+
+        if (result.team_classification) {
+          setTeamClassification(result.team_classification);
+          setPreparing(false);
+          return;
+        }
+
+        if (attempts < 90) {
+          setPrepareMessage("Calibrating team colours… first load may take up to a minute.");
+          attempts += 1;
+          window.setTimeout(bootstrap, 1500);
+          return;
+        }
+
+        setPreparing(false);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not load video.");
+          setPreparing(false);
+        }
+      }
+    }
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, [videoId]);
 
   useEffect(() => {
+    if (preparing) return;
+
     const timer = window.setTimeout(async () => {
       setDetecting(true);
       try {
@@ -78,7 +114,7 @@ export default function SetupPage() {
     }, 260);
 
     return () => window.clearTimeout(timer);
-  }, [frameId, videoId]);
+  }, [frameId, videoId, preparing]);
 
   const ready = useMemo(() => Boolean(playerPoint), [playerPoint]);
   const playerCount = detections.filter(isPlayerDetection).length;
@@ -211,7 +247,13 @@ export default function SetupPage() {
           </aside>
 
           <div>
-            {sourceUrl ? (
+            {preparing ? (
+              <div className="card grid aspect-video place-items-center p-8 text-center">
+                <Loader2 className="mb-4 animate-spin text-[#3b82f6]" size={32} />
+                <p className="text-sm text-[#f1f5f9]">{prepareMessage}</p>
+                <p className="mt-2 text-xs text-[#64748b]">Loading the AI model and analysing kit colours.</p>
+              </div>
+            ) : sourceUrl ? (
               <SetupCanvas
                 videoUrl={sourceUrl}
                 mode={mode}
@@ -232,8 +274,8 @@ export default function SetupPage() {
                 teamClassification={teamClassification}
               />
             ) : (
-              <div className="grid aspect-video place-items-center rounded-lg border border-white/10 bg-white/[0.04]">
-                <Loader2 className="animate-spin text-cyan-300" />
+              <div className="card grid aspect-video place-items-center">
+                <Loader2 className="animate-spin text-[#3b82f6]" />
               </div>
             )}
             {error && (

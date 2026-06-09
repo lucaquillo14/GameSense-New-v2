@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.services.calibration import compute_homography
-from app.services.cv_pipeline import ClassicalCvPipeline, ReIdByteTrackPipeline
+from app.services.cv_pipeline import get_cv_pipeline
 from app.services.metrics import build_speed_series, compute_metrics, compute_shot_metrics, stabilize_track_points
 from app.services.shot_detection import detect_shots
 from app.services.storage import get_video_record, update_video_record, video_metadata
@@ -33,7 +33,7 @@ def process_video(video_id: str) -> None:
         mode = record.get("mode") or "max_speed"
         video_path = Path(record["video_path"])
         team_templates = _load_team_templates(video_id, record, video_path)
-        pipeline = ReIdByteTrackPipeline()
+        pipeline = get_cv_pipeline()
         start_frame_id = int(target.get("frame_id") or 0)
         progress_callback = lambda frame_id, frame_count: _set_tracking_progress(video_id, frame_id, frame_count)
 
@@ -123,7 +123,7 @@ def _load_team_templates(video_id: str, record: dict, video_path: Path) -> TeamT
     if cached:
         return TeamTemplates.from_dict(cached)
 
-    pipeline = ClassicalCvPipeline()
+    pipeline = get_cv_pipeline()
     templates = pipeline.calibrate_team_templates(video_path)
     record["team_classification"] = templates.to_dict()
     update_video_record(video_id, record)

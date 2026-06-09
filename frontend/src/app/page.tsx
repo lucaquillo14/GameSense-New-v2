@@ -91,7 +91,7 @@ export default function UploadPage() {
             className="btn-primary mt-5 flex w-full items-center justify-center gap-2 px-4 py-3 disabled:cursor-not-allowed"
           >
             {busy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
-            Continue to player selection
+            {busy ? "Uploading video…" : "Continue to player selection"}
           </button>
         </div>
 
