@@ -92,16 +92,35 @@ export default function SetupPage() {
   useEffect(() => {
     if (preparing) return;
 
-    const timer = window.setTimeout(async () => {
+    let cancelled = false;
+    let attempts = 0;
+
+    async function loadDetections() {
       try {
         const response = await getFrameDetections(videoId, frameId);
+        if (cancelled) return;
         setDetections(response.detections);
+        if (!response.detections.length && attempts < 60) {
+          attempts += 1;
+          window.setTimeout(loadDetections, 1500);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load detections.");
+        if (!cancelled) {
+          if (attempts < 60) {
+            attempts += 1;
+            window.setTimeout(loadDetections, 1500);
+            return;
+          }
+          setError(err instanceof Error ? err.message : "Could not load detections.");
+        }
       }
-    }, 260);
+    }
 
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(loadDetections, 260);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [frameId, videoId, preparing]);
 
   const ready = useMemo(() => Boolean(playerPoint), [playerPoint]);

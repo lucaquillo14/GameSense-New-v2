@@ -59,8 +59,11 @@ export default function ResultsPage() {
   const results = result?.results;
   const analysisMode = result?.mode ?? "max_speed";
   const progress = result?.progress;
-  const isProcessing = result?.status === "processing" || !result;
-  const progressPercent = isProcessing ? (progress?.percent ?? 0) : progress?.percent ?? 100;
+  const isProcessing =
+    !result ||
+    result.status === "processing" ||
+    (result.status !== "complete" && result.status !== "failed" && (progress?.percent ?? 0) < 100);
+  const progressPercent = Math.max(progress?.percent ?? (isProcessing ? 2 : 100), isProcessing ? 2 : 0);
   const target = result?.target_player as { player_id?: string; team_label?: string } | null | undefined;
 
   const speedMetrics = results && !isShotMetrics(results) ? results : null;

@@ -211,12 +211,20 @@ def track_player_robust(
         fx, fy = to_frame_coords(float(x), float(y))
         return fx, fy, float(w) * processing_scale, float(h) * processing_scale
 
-    def maybe_record_progress(frame_id: int, frame_count: int) -> None:
-        if progress_callback and steps_completed > 0 and steps_completed % 10 == 0:
-            stats.tracked_so_far = stats.visible_frames
-            stats.predicted_so_far = stats.predicted_frames
-            stats.lost_so_far = stats.lost_frames
-            progress_callback(steps_completed, resolved_total_steps or 1, frame_id, frame_count, stats)
+    def maybe_record_progress(frame_id: int, frame_count: int, *, force: bool = False) -> None:
+        if not progress_callback:
+            return
+        offset = max(frame_id - start_frame_id, 0)
+        span = max(frame_count - start_frame_id, 1)
+        frame_steps = min(resolved_total_steps or 1, max(1, int((offset / span) * (resolved_total_steps or 1))))
+        report_steps = max(steps_completed, frame_steps)
+        should_report = force or frame_id % 15 == 0 or (steps_completed > 0 and steps_completed % 10 == 0)
+        if not should_report:
+            return
+        stats.tracked_so_far = stats.visible_frames
+        stats.predicted_so_far = stats.predicted_frames
+        stats.lost_so_far = stats.lost_frames
+        progress_callback(report_steps, resolved_total_steps or 1, frame_id, frame_count, stats)
 
     def build_preview_boxes(frame, detections: list[tuple[float, float, float, float, float]], frame_id: int, time_s: float) -> list[dict]:
         boxes: list[dict] = []
@@ -437,6 +445,8 @@ def track_player_robust(
                     build_preview_boxes(frame, last_detections, frame_id, time_s),
                     last_ball_box,
                 )
+
+            maybe_record_progress(frame_id, frame_count)
 
     finally:
         gc.collect()

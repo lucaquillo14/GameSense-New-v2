@@ -65,9 +65,11 @@ def process_video(video_id: str) -> None:
         record["processing"] = {"total_steps": total_steps}
         update_video_record(video_id, record)
 
+        set_progress(video_id, stage="calibration", percent=6, message="Calibrating team colours")
         timer.start("team_classification")
         team_templates = _load_team_templates(video_id, record, video_path)
         timer.stop("team_classification")
+        set_progress(video_id, stage="tracking", percent=10, message="Starting player tracking")
 
         def progress_callback(
             steps_completed: int,

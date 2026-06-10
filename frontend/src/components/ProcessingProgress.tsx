@@ -1,6 +1,6 @@
 "use client";
 
-const STAGES = ["calibration", "tracking", "filtering", "shot_detection", "metrics", "complete"] as const;
+const STAGES = ["calibration", "tracking", "metrics", "heatmaps", "saving", "complete"] as const;
 
 const STAGE_LABELS: Record<string, string> = {
   queued: "Queued",
@@ -9,6 +9,8 @@ const STAGE_LABELS: Record<string, string> = {
   filtering: "Filtering",
   shot_detection: "Shot detection",
   metrics: "Metrics",
+  heatmaps: "Heatmaps",
+  saving: "Saving",
   complete: "Complete",
   failed: "Failed",
 };
@@ -32,8 +34,19 @@ export function ProcessingProgress({
   predictedSoFar,
   lostSoFar,
 }: Props) {
-  const activeIndex = STAGES.findIndex((item) => item === stage);
-  const resolvedIndex = activeIndex >= 0 ? activeIndex : stage === "queued" ? 0 : 1;
+  const stageIndexMap: Record<string, number> = {
+    queued: 0,
+    calibration: 0,
+    tracking: 1,
+    filtering: 1,
+    shot_detection: 1,
+    metrics: 2,
+    heatmaps: 3,
+    overlay: 3,
+    saving: 4,
+    complete: 5,
+  };
+  const resolvedIndex = stageIndexMap[stage ?? "calibration"] ?? 1;
   const showTrackerStats =
     stage === "tracking" &&
     (trackedSoFar !== undefined || predictedSoFar !== undefined || lostSoFar !== undefined);
@@ -64,7 +77,7 @@ export function ProcessingProgress({
         </div>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-3 text-xs">
-        {STAGES.slice(0, 5).map((item, index) => {
+        {STAGES.map((item, index) => {
           const active = index === resolvedIndex;
           const done = index < resolvedIndex;
           return (

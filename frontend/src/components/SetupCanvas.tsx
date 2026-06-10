@@ -80,11 +80,13 @@ export function SetupCanvas({
     observer.observe(video);
     video.addEventListener("timeupdate", redraw);
     video.addEventListener("loadedmetadata", redraw);
+    video.addEventListener("loadeddata", redraw);
     video.addEventListener("seeked", redraw);
     return () => {
       observer.disconnect();
       video.removeEventListener("timeupdate", redraw);
       video.removeEventListener("loadedmetadata", redraw);
+      video.removeEventListener("loadeddata", redraw);
       video.removeEventListener("seeked", redraw);
     };
   }, [redraw]);
@@ -152,6 +154,7 @@ export function SetupCanvas({
     <div className="card overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
       <div className="relative aspect-video bg-black">
         <video
+          key={videoUrl}
           ref={videoRef}
           src={videoUrl}
           className="h-full w-full object-contain"

@@ -366,16 +366,23 @@ class ClassicalCvPipeline:
                     apply_temporal=False,
                 )
                 if team_id is None:
-                    continue
-                detections.append({
-                    "id": f"player-{frame_id}-{output_index}",
-                    "label": team_id,
-                    "team": team_id,
-                    "team_label": team_label(team_id),  # type: ignore[arg-type]
-                    "team_color": {"r": color_rgb[0], "g": color_rgb[1], "b": color_rgb[2]},
-                    "confidence": round(confidence, 3),
-                    "bbox": original_bbox,
-                })
+                    detections.append({
+                        "id": f"player-{frame_id}-{output_index}",
+                        "label": "player",
+                        "confidence": round(confidence, 3),
+                        "bbox": original_bbox,
+                        "team_color": {"r": 148, "g": 163, "b": 184},
+                    })
+                else:
+                    detections.append({
+                        "id": f"player-{frame_id}-{output_index}",
+                        "label": team_id,
+                        "team": team_id,
+                        "team_label": team_label(team_id),  # type: ignore[arg-type]
+                        "team_color": {"r": color_rgb[0], "g": color_rgb[1], "b": color_rgb[2]},
+                        "confidence": round(confidence, 3),
+                        "bbox": original_bbox,
+                    })
             else:
                 detections.append({
                     "id": f"player-{frame_id}-{output_index}",

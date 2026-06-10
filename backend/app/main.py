@@ -147,6 +147,7 @@ def _extract_setup_frame(video_id: str, video_path: Path) -> None:
         if record:
             record["setup_frame"] = setup_frame
             update_video_record(video_id, record)
+        _cv_executor.submit(_calibrate_team_classification, video_id)
     except Exception:
         pass
 
