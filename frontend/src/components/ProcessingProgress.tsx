@@ -18,11 +18,25 @@ type Props = {
   percent: number;
   message?: string;
   frameLabel?: string;
+  trackedSoFar?: number;
+  predictedSoFar?: number;
+  lostSoFar?: number;
 };
 
-export function ProcessingProgress({ stage, percent, message, frameLabel }: Props) {
+export function ProcessingProgress({
+  stage,
+  percent,
+  message,
+  frameLabel,
+  trackedSoFar,
+  predictedSoFar,
+  lostSoFar,
+}: Props) {
   const activeIndex = STAGES.findIndex((item) => item === stage);
   const resolvedIndex = activeIndex >= 0 ? activeIndex : stage === "queued" ? 0 : 1;
+  const showTrackerStats =
+    stage === "tracking" &&
+    (trackedSoFar !== undefined || predictedSoFar !== undefined || lostSoFar !== undefined);
 
   return (
     <div className="card fade-in p-5">
@@ -32,10 +46,23 @@ export function ProcessingProgress({ stage, percent, message, frameLabel }: Prop
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-[#ffffff14]">
         <div
-          className="h-full rounded-full bg-[#3b82f6] transition-all duration-500 ease-out"
-          style={{ width: `${Math.min(Math.max(percent, 2), 100)}%` }}
+          className="h-full rounded-full bg-[#3b82f6]"
+          style={{ width: `${Math.min(Math.max(percent, 2), 100)}%`, transition: "width 400ms ease" }}
         />
       </div>
+      {showTrackerStats ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-[#10b981]/15 px-2.5 py-1 text-[#10b981]">
+            Tracked {trackedSoFar ?? 0} frames
+          </span>
+          <span className="rounded-full bg-[#f59e0b]/15 px-2.5 py-1 text-[#f59e0b]">
+            Predicted {predictedSoFar ?? 0} frames
+          </span>
+          <span className="rounded-full bg-[#64748b]/20 px-2.5 py-1 text-[#94a3b8]">
+            Lost {lostSoFar ?? 0} frames
+          </span>
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-3 text-xs">
         {STAGES.slice(0, 5).map((item, index) => {
           const active = index === resolvedIndex;

@@ -29,8 +29,8 @@ class PlayerIdentityTests(unittest.TestCase):
         red_hist = extract_shirt_histogram(_solid_player_frame((0, 0, 220)), {"x": 40, "y": 40, "width": 60, "height": 120})
         blue_hist = extract_shirt_histogram(_solid_player_frame((220, 0, 0)), {"x": 40, "y": 40, "width": 60, "height": 120})
         self.templates = TeamTemplates(
-            team_a_histogram=red_hist,
-            team_b_histogram=blue_hist,
+            team_a_lab=red_hist,
+            team_b_lab=blue_hist,
             team_a_color_rgb=(220, 0, 0),
             team_b_color_rgb=(0, 0, 220),
         )

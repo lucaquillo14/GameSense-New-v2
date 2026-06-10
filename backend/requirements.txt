@@ -6,3 +6,4 @@ opencv-contrib-python==4.10.0.84
 numpy==2.2.1
 ultralytics==8.4.60
 lap==0.5.13
+matplotlib==3.10.0

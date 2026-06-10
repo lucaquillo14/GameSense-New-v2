@@ -47,17 +47,29 @@ export type Metrics = {
   player_id: number;
   player_label?: string;
   team_label?: string;
+  units?: "metric" | "pixels";
   speed_series?: SpeedSeriesPoint[];
+  max_speed_kmh?: number;
   top_speed_kmh: number;
   avg_speed_kmh: number;
-  peak_acceleration_mps2: number;
-  avg_acceleration_mps2: number;
+  distance_m?: number;
+  tracked_frames?: number;
+  predicted_frames?: number;
+  lost_frames?: number;
+  top_speed_px_per_s?: number;
+  avg_speed_px_per_s?: number;
+  peak_acceleration_mps2?: number;
+  avg_acceleration_mps2?: number;
   total_distance_m: number;
-  active_distance_m: number;
-  sprint_count: number;
-  sprint_distance_m: number;
+  active_distance_m?: number;
+  total_distance_px?: number;
+  active_distance_px?: number;
+  sprint_count?: number;
+  sprint_distance_m?: number;
+  sprint_distance_px?: number;
+  calibrated_point_ratio?: number;
   usable_track_points: number;
-  rejected_jump_count: number;
+  rejected_jump_count?: number;
   confidence_score: number;
 };
 
@@ -97,12 +109,18 @@ export type VideoResult = {
   results?: Metrics | ShotMetrics | null;
   assets?: {
     sprint_highlights: string[];
+    detections_json?: string;
+    position_heatmap?: string;
+    speed_heatmap?: string;
   } | null;
   warnings: string[];
   progress?: {
     stage: string;
     percent: number;
     message: string;
+    tracked_so_far?: number;
+    predicted_so_far?: number;
+    lost_so_far?: number;
   } | null;
 };
 
@@ -214,6 +232,33 @@ export async function processVideo(videoId: string, mode: AnalysisMode = "max_sp
 
 export async function getResults(videoId: string): Promise<VideoResult> {
   return parseResponse<VideoResult>(await fetch(`${API_BASE}/results/${videoId}`, { cache: "no-store" }));
+}
+
+export async function getPreviewFrame(videoId: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/preview/${videoId}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Preview not ready");
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function getDetectionsOverlay(path: string): Promise<import("@/lib/overlay").DetectionsOverlay> {
+  const url = mediaUrl(path);
+  if (!url) {
+    return { fps: 30, interval: 1, frames: {} };
+  }
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    return { fps: 30, interval: 1, frames: {} };
+  }
+  const payload = (await response.json()) as import("@/lib/overlay").DetectionsOverlay;
+  return {
+    fps: payload.fps ?? 30,
+    interval: payload.interval ?? 1,
+    target_id: payload.target_id,
+    frames: payload.frames ?? {},
+  };
 }
 
 export function mediaUrl(path?: string | null): string | null {

@@ -10,13 +10,20 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.team_classification import (
-    REFEREE_DISTANCE_THRESHOLD,
+    CONFLICT_MAX_SAME_TEAM,
+    MIN_SAMPLES_PER_CLUSTER,
     TEAM_A_LABEL,
     TEAM_B_LABEL,
+    TEMPORAL_CONFIRM_VOTES,
+    TEMPORAL_HISTORY_FRAMES,
+    TeamClassificationService,
     TeamTemplates,
+    TeamTemporalSmoother,
     build_team_templates,
     classify_team,
+    detect_team_conflict,
     extract_shirt_histogram,
+    extract_shirt_lab_sample,
     team_label,
 )
 
@@ -43,58 +50,104 @@ def _bbox(x: int, y: int, width: int, height: int) -> dict:
 
 
 class TeamClassificationTests(unittest.TestCase):
-    def test_extract_shirt_histogram_uses_upper_body_only(self):
+    def test_extract_shirt_lab_sample_returns_mean_lab_vector(self):
         frame = _solid_player_frame((0, 0, 220))
-        histogram = extract_shirt_histogram(frame, _bbox(40, 40, 60, 120))
-        self.assertIsNotNone(histogram)
-        self.assertEqual(histogram.shape[0], 256)
-        self.assertAlmostEqual(float(histogram.sum()), 1.0, places=3)
+        sample = extract_shirt_lab_sample(frame, _bbox(40, 40, 60, 120))
+        self.assertIsNotNone(sample)
+        self.assertEqual(sample.shape, (3,))
+
+    def test_extract_shirt_histogram_alias_matches_lab_sample(self):
+        frame = _solid_player_frame((0, 0, 220))
+        bbox = _bbox(40, 40, 60, 120)
+        self.assertTrue(np.allclose(extract_shirt_histogram(frame, bbox), extract_shirt_lab_sample(frame, bbox)))
+
+    def test_rejects_crops_with_excessive_background_bleed(self):
+        frame = np.full((240, 320, 3), 255, dtype=np.uint8)
+        sample = extract_shirt_lab_sample(frame, _bbox(40, 40, 60, 120))
+        self.assertIsNone(sample)
 
     def test_classify_team_assigns_distinct_colours(self):
-        red_hist = extract_shirt_histogram(frame := _solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
-        blue_hist = extract_shirt_histogram(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
-        self.assertIsNotNone(red_hist)
-        self.assertIsNotNone(blue_hist)
+        red_sample = extract_shirt_lab_sample(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
+        blue_sample = extract_shirt_lab_sample(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
+        self.assertIsNotNone(red_sample)
+        self.assertIsNotNone(blue_sample)
 
         templates = TeamTemplates(
-            team_a_histogram=red_hist,
-            team_b_histogram=blue_hist,
+            team_a_lab=red_sample,
+            team_b_lab=blue_sample,
             team_a_color_rgb=(220, 0, 0),
             team_b_color_rgb=(0, 0, 220),
         )
 
-        self.assertEqual(classify_team(red_hist, templates), "team_a")
-        self.assertEqual(classify_team(blue_hist, templates), "team_b")
+        self.assertEqual(classify_team(red_sample, templates), "team_a")
+        self.assertEqual(classify_team(blue_sample, templates), "team_b")
         self.assertEqual(team_label("team_a"), TEAM_A_LABEL)
         self.assertEqual(team_label("team_b"), TEAM_B_LABEL)
 
-    def test_referee_excluded_when_far_from_both_teams(self):
-        red_hist = extract_shirt_histogram(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
-        blue_hist = extract_shirt_histogram(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
-        yellow_hist = extract_shirt_histogram(_solid_player_frame((0, 220, 220)), _bbox(40, 40, 60, 120))
-        self.assertIsNotNone(yellow_hist)
+    def test_referee_excluded_when_third_cluster_enabled(self):
+        red_sample = extract_shirt_lab_sample(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
+        blue_sample = extract_shirt_lab_sample(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
+        yellow_sample = extract_shirt_lab_sample(_solid_player_frame((0, 220, 220)), _bbox(40, 40, 60, 120))
+        self.assertIsNotNone(yellow_sample)
 
         templates = TeamTemplates(
-            team_a_histogram=red_hist,
-            team_b_histogram=blue_hist,
+            team_a_lab=red_sample,
+            team_b_lab=blue_sample,
             team_a_color_rgb=(220, 0, 0),
             team_b_color_rgb=(0, 0, 220),
+            referee_lab=yellow_sample,
+            referee_enabled=True,
         )
 
-        self.assertEqual(classify_team(yellow_hist, templates), "referee")
+        self.assertEqual(classify_team(yellow_sample, templates), "referee")
 
     def test_team_templates_round_trip(self):
-        red_hist = extract_shirt_histogram(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
-        blue_hist = extract_shirt_histogram(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
+        red_sample = extract_shirt_lab_sample(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
+        blue_sample = extract_shirt_lab_sample(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
         templates = TeamTemplates(
-            team_a_histogram=red_hist,
-            team_b_histogram=blue_hist,
+            team_a_lab=red_sample,
+            team_b_lab=blue_sample,
             team_a_color_rgb=(220, 0, 0),
             team_b_color_rgb=(0, 0, 220),
         )
         restored = TeamTemplates.from_dict(templates.to_dict())
-        self.assertEqual(classify_team(red_hist, restored), "team_a")
-        self.assertEqual(classify_team(blue_hist, restored), "team_b")
+        self.assertEqual(classify_team(red_sample, restored), "team_a")
+        self.assertEqual(classify_team(blue_sample, restored), "team_b")
+
+    def test_temporal_smoother_requires_majority_votes(self):
+        smoother = TeamTemporalSmoother()
+        player_key = "p1"
+        for _ in range(TEMPORAL_CONFIRM_VOTES - 1):
+            self.assertEqual(smoother.record(player_key, "team_a"), "unconfirmed")
+        self.assertEqual(smoother.record(player_key, "team_a"), "team_a")
+
+    def test_temporal_smoother_marks_referee_immediately(self):
+        smoother = TeamTemporalSmoother()
+        self.assertEqual(smoother.record("ref", "referee"), "referee")
+
+    def test_team_classification_service_applies_temporal_smoothing(self):
+        red_sample = extract_shirt_lab_sample(_solid_player_frame((0, 0, 220)), _bbox(40, 40, 60, 120))
+        blue_sample = extract_shirt_lab_sample(_solid_player_frame((220, 0, 0)), _bbox(40, 40, 60, 120))
+        templates = TeamTemplates(
+            team_a_lab=red_sample,
+            team_b_lab=blue_sample,
+            team_a_color_rgb=(220, 0, 0),
+            team_b_color_rgb=(0, 0, 220),
+        )
+        service = TeamClassificationService()
+        service.set_templates(templates)
+        frame = _solid_player_frame((0, 0, 220))
+        bbox = _bbox(40, 40, 60, 120)
+
+        for _ in range(TEMPORAL_CONFIRM_VOTES - 1):
+            confirmed, _ = service.classify_player(frame, bbox, "player-1")
+            self.assertEqual(confirmed, "unconfirmed")
+        confirmed, _ = service.classify_player(frame, bbox, "player-1")
+        self.assertEqual(confirmed, "team_a")
+
+    def test_detect_team_conflict_flags_overloaded_team(self):
+        self.assertFalse(detect_team_conflict({"team_a": 7, "team_b": 3}))
+        self.assertTrue(detect_team_conflict({"team_a": CONFLICT_MAX_SAME_TEAM + 1, "team_b": 2}))
 
     def test_kmeans_calibration_separates_two_team_colours(self):
         frames: list[np.ndarray] = []
@@ -106,19 +159,6 @@ class TeamClassificationTests(unittest.TestCase):
             frame[100:160, 30:90] = (20, 20, 20)
             frame[100:160, 120:180] = (20, 20, 20)
             frames.append(frame)
-
-        frame_index = {"value": 0}
-
-        def read_frame(_frame_id: int) -> np.ndarray:
-            frame = frames[min(frame_index["value"], len(frames) - 1)]
-            frame_index["value"] += 1
-            return frame
-
-        def detect_people(frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
-            players = []
-            for x in (30, 120):
-                players.append((float(x), 40.0, 60.0, 120.0, 0.95))
-            return players
 
         capture_frames = iter(frames)
 
@@ -146,6 +186,12 @@ class TeamClassificationTests(unittest.TestCase):
             def release(self):
                 self.opened = False
 
+        def detect_people(_frame: np.ndarray) -> list[tuple[float, float, float, float, float]]:
+            return [
+                (30.0, 40.0, 60.0, 120.0, 0.95),
+                (120.0, 40.0, 60.0, 120.0, 0.95),
+            ]
+
         original_video_capture = cv2.VideoCapture
         cv2.VideoCapture = lambda _path: FakeCapture()
         try:
@@ -163,19 +209,21 @@ class TeamClassificationTests(unittest.TestCase):
         finally:
             cv2.VideoCapture = original_video_capture
 
-        red_hist = extract_shirt_histogram(frames[0], _bbox(30, 40, 60, 120))
-        blue_hist = extract_shirt_histogram(frames[0], _bbox(120, 40, 60, 120))
-        self.assertIsNotNone(red_hist)
-        self.assertIsNotNone(blue_hist)
+        red_sample = extract_shirt_lab_sample(frames[0], _bbox(30, 40, 60, 120))
+        blue_sample = extract_shirt_lab_sample(frames[0], _bbox(120, 40, 60, 120))
+        self.assertIsNotNone(red_sample)
+        self.assertIsNotNone(blue_sample)
 
-        red_team = classify_team(red_hist, templates)
-        blue_team = classify_team(blue_hist, templates)
+        red_team = classify_team(red_sample, templates)
+        blue_team = classify_team(blue_sample, templates)
         self.assertIn(red_team, {"team_a", "team_b"})
         self.assertIn(blue_team, {"team_a", "team_b"})
         self.assertNotEqual(red_team, blue_team)
 
-    def test_referee_threshold_constant(self):
-        self.assertEqual(REFEREE_DISTANCE_THRESHOLD, 0.55)
+    def test_calibration_constants(self):
+        self.assertGreaterEqual(MIN_SAMPLES_PER_CLUSTER, 8)
+        self.assertEqual(TEMPORAL_HISTORY_FRAMES, 8)
+        self.assertEqual(TEMPORAL_CONFIRM_VOTES, 5)
 
 
 if __name__ == "__main__":

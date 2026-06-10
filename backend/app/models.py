@@ -26,8 +26,9 @@ class TeamColor(BaseModel):
 class TeamClassificationInfo(BaseModel):
     team_a: dict
     team_b: dict
-    calibration_frames: int = 10
-    referee_distance_threshold: float = 0.55
+    calibration_frames: int = 30
+    referee_enabled: bool = False
+    warnings: list[str] = Field(default_factory=list)
 
 
 class Detection(BaseModel):
@@ -93,15 +94,24 @@ class Metrics(BaseModel):
     player_id: int
     player_label: str | None = None
     team_label: str | None = None
+    units: Literal["metric", "pixels"] = "metric"
     speed_series: list[SpeedSeriesPoint] = Field(default_factory=list)
-    top_speed_kmh: float
-    avg_speed_kmh: float
-    peak_acceleration_mps2: float
-    avg_acceleration_mps2: float
-    total_distance_m: float
-    active_distance_m: float
-    sprint_count: int
-    sprint_distance_m: float
+    max_speed_kmh: float = 0.0
+    top_speed_kmh: float = 0.0
+    avg_speed_kmh: float = 0.0
+    distance_m: float = 0.0
+    tracked_frames: int = 0
+    predicted_frames: int = 0
+    lost_frames: int = 0
+    top_speed_px_per_s: float = 0.0
+    avg_speed_px_per_s: float = 0.0
+    calibrated_point_ratio: float = 0.0
+    peak_acceleration_mps2: float = 0.0
+    avg_acceleration_mps2: float = 0.0
+    total_distance_m: float = 0.0
+    active_distance_m: float = 0.0
+    sprint_count: int = 0
+    sprint_distance_m: float = 0.0
     usable_track_points: int = 0
     rejected_jump_count: int = 0
     confidence_score: float = 0.0
@@ -130,6 +140,9 @@ class ShotMetrics(BaseModel):
 
 class ResultAssets(BaseModel):
     sprint_highlights: list[str] = []
+    detections_json: str | None = None
+    position_heatmap: str | None = None
+    speed_heatmap: str | None = None
 
 
 class VideoResult(BaseModel):

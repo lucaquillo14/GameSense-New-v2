@@ -1,31 +1,64 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { uploadVideo } from "@/lib/api";
-import { AlertCircle, ArrowRight, Film, Gauge, Loader2, Timer, UploadCloud } from "lucide-react";
+import {
+  formatDuration,
+  LocalVideoMeta,
+  MAX_UPLOAD_MB,
+  MAX_VIDEO_DURATION_S,
+  readLocalVideoMeta,
+  validateFileSize,
+} from "@/lib/uploadLimits";
+import { AlertCircle, ArrowRight, Film, Gauge, Loader2, Maximize2, Timer, UploadCloud } from "lucide-react";
 
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [localMeta, setLocalMeta] = useState<LocalVideoMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const localMeta = useMemo(() => {
-    if (!file || !previewUrl) return null;
-    return { name: file.name, sizeMb: (file.size / (1024 * 1024)).toFixed(1) };
-  }, [file, previewUrl]);
-
-  function onFileSelected(next: File | null) {
-    setFile(next);
+  async function onFileSelected(next: File | null) {
+    setError(null);
+    setLocalMeta(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(next ? URL.createObjectURL(next) : null);
+
+    if (!next) {
+      setFile(null);
+      setPreviewUrl(null);
+      return;
+    }
+
+    const sizeError = validateFileSize(next);
+    if (sizeError) {
+      setFile(null);
+      setPreviewUrl(null);
+      setError(sizeError);
+      return;
+    }
+
+    setChecking(true);
+    try {
+      const meta = await readLocalVideoMeta(next);
+      setFile(next);
+      setLocalMeta(meta);
+      setPreviewUrl(URL.createObjectURL(next));
+    } catch (err) {
+      setFile(null);
+      setPreviewUrl(null);
+      setError(err instanceof Error ? err.message : "Could not validate this video.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function submit() {
-    if (!file) return;
+    if (!file || !localMeta) return;
     setBusy(true);
     setError(null);
     try {
@@ -53,23 +86,27 @@ export default function UploadPage() {
         <div className="card p-6">
           <label className="dropzone-hover group flex min-h-72 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#ffffff14] bg-[#0a0a0f] px-6 py-10 text-center transition-colors hover:bg-[#3b82f6]/5">
             <span className="grid h-16 w-16 place-items-center rounded-xl bg-[#3b82f6] text-white shadow-[0_0_28px_rgba(59,130,246,0.35)]">
-              <UploadCloud size={30} />
+              {checking ? <Loader2 size={30} className="animate-spin" /> : <UploadCloud size={30} />}
             </span>
             <span className="mt-5 text-xl font-semibold text-[#f1f5f9]">
-              {file ? file.name : "Drag and drop your video here"}
+              {checking ? "Checking video…" : file ? file.name : "Drag and drop your video here"}
             </span>
-            <span className="mt-2 text-sm text-[#64748b]">MP4 or MOV · sideline or broadcast angle works best</span>
+            <span className="mt-2 text-sm text-[#64748b]">
+              MP4 or MOV · up to {MAX_UPLOAD_MB} MB · max {MAX_VIDEO_DURATION_S}s
+            </span>
             <input
               type="file"
               accept="video/mp4,video/quicktime"
               className="sr-only"
-              onChange={(event) => onFileSelected(event.target.files?.[0] ?? null)}
+              onChange={(event) => void onFileSelected(event.target.files?.[0] ?? null)}
             />
           </label>
 
           {localMeta && (
             <div className="mt-4 flex flex-wrap gap-2">
               <MetaPill icon={<Film size={14} />} label={`${localMeta.sizeMb} MB`} />
+              <MetaPill icon={<Timer size={14} />} label={formatDuration(localMeta.durationS)} />
+              <MetaPill icon={<Maximize2 size={14} />} label={`${localMeta.width}×${localMeta.height}`} />
             </div>
           )}
 
@@ -87,7 +124,7 @@ export default function UploadPage() {
           <button
             type="button"
             onClick={submit}
-            disabled={!file || busy}
+            disabled={!file || !localMeta || busy || checking}
             className="btn-primary mt-5 flex w-full items-center justify-center gap-2 px-4 py-3 disabled:cursor-not-allowed"
           >
             {busy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
@@ -96,7 +133,7 @@ export default function UploadPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-[#64748b]">
-          After upload, resolution, fps, and duration appear as badges on the setup screen.
+          FPS is detected after upload. Clips longer than {MAX_VIDEO_DURATION_S} seconds are rejected before upload.
         </p>
       </section>
     </AppShell>

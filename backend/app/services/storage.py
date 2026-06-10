@@ -23,7 +23,7 @@ def record_path(video_id: str) -> Path:
 async def save_upload(video_id: str, file: UploadFile, suffix: str) -> Path:
     path = video_dir(video_id) / f"source{suffix}"
     with path.open("wb") as output:
-        while chunk := await file.read(1024 * 1024):
+        while chunk := await file.read(4 * 1024 * 1024):
             output.write(chunk)
     return path
 
@@ -89,7 +89,10 @@ def update_video_record(video_id: str, record: dict) -> None:
             os.unlink(temp_name)
 
 
-def write_json(video_id: str, filename: str, payload: dict) -> str:
+def write_json(video_id: str, filename: str, payload: dict, *, compact: bool = False) -> str:
     path = video_dir(video_id) / filename
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    if compact:
+        path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    else:
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return f"/media/{video_id}/{filename}"

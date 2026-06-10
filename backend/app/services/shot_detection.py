@@ -65,12 +65,16 @@ def detect_shots(
     ordered_ball = sorted(ball_points, key=lambda point: point.frame_id)
     speeds: list[tuple[int, float]] = []
     for index in range(1, len(ordered_ball)):
+        previous = ordered_ball[index - 1]
+        current = ordered_ball[index]
+        if not previous.calibrated or not current.calibrated:
+            continue
         speed_kmh = _ball_speed_kmh(
-            ordered_ball[index - 1],
-            ordered_ball[index],
+            previous,
+            current,
             homography_matrix,
         )
-        speeds.append((ordered_ball[index].frame_id, speed_kmh))
+        speeds.append((current.frame_id, speed_kmh))
 
     if not speeds:
         return []

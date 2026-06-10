@@ -46,17 +46,21 @@ import numpy as np
 
 _pipeline_lock = Lock()
 _shared_pipeline = None
+_detector = None
+_detector_lock = Lock()
 
-from app.services.calibration import pixel_to_field
+from app.services.calibration import CalibrationResult, build_track_point, is_pixel_in_calibrated_region, pixel_to_field
 from app.services.metrics import BallTrackPoint, TrackPoint
 from app.services.player_identity import PlayerIdentityManager
 from app.services.team_classification import (
+    TeamClassificationService,
     TeamTemplates,
     build_team_templates,
-    classify_team,
-    extract_shirt_histogram,
+    detect_team_conflict,
     team_label,
 )
+
+NEUTRAL_TEAM_RGB = (100, 116, 139)
 
 try:
     from ultralytics import YOLO
@@ -78,6 +82,24 @@ BALL_KALMAN_PROCESS_NOISE = 25.0
 BALL_KALMAN_MEASUREMENT_NOISE = 10.0
 BALL_INTERPOLATED_CONFIDENCE = 0.25
 BALL_MAX_CONSECUTIVE_MISSES = 15
+FRAME_EDGE_MARGIN_RATIO = 0.04
+EDGE_REENTRY_WINDOW_S = 2.0
+
+
+def _as_calibration(
+    calibration: CalibrationResult | np.ndarray,
+    frame_width: int = 0,
+    frame_height: int = 0,
+) -> CalibrationResult:
+    if isinstance(calibration, CalibrationResult):
+        return calibration
+    return CalibrationResult(
+        matrix=calibration,
+        scale_known=True,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        units="metric",
+    )
 
 
 class BallKalmanTracker:
@@ -117,9 +139,10 @@ class BallKalmanTracker:
         self,
         frame_id: int,
         time_s: float,
-        homography_matrix: np.ndarray,
+        calibration: CalibrationResult,
         detection: tuple[float, float, float] | None,
     ) -> BallTrackPoint | None:
+        calibration = _as_calibration(calibration)
         interpolated = False
         if detection is not None:
             cx, cy, det_conf = detection
@@ -144,7 +167,19 @@ class BallKalmanTracker:
 
         x_px = _kalman_state_value(self.kf.statePost, 0)
         y_px = _kalman_state_value(self.kf.statePost, 1)
-        x_m, y_m = pixel_to_field(homography_matrix, (x_px, y_px))
+        calibrated = False
+        x_m = 0.0
+        y_m = 0.0
+        if calibration.scale_known and calibration.matrix is not None:
+            if is_pixel_in_calibrated_region(
+                x_px,
+                y_px,
+                calibration.region_polygon_px,
+                calibration.frame_width,
+                calibration.frame_height,
+            ):
+                x_m, y_m = pixel_to_field(calibration.matrix, (x_px, y_px))
+                calibrated = True
         return BallTrackPoint(
             frame_id=frame_id,
             time_s=time_s,
@@ -152,24 +187,36 @@ class BallKalmanTracker:
             y_px=y_px,
             x_m=x_m,
             y_m=y_m,
+            calibrated=calibrated,
             confidence=confidence,
             interpolated=interpolated,
         )
 
 
+def get_detector():
+    global _detector
+    if _detector is None and YOLO:
+        with _detector_lock:
+            if _detector is None:
+                _detector = YOLO("yolov8n.pt")
+    return _detector
+
+
 class ClassicalCvPipeline:
     """Lightweight fallback pipeline — CSRT tracker + YOLO detections."""
 
-    def __init__(self, max_width: int = 1280, sample_fps: float = 25.0):
+    def __init__(self, max_width: int = 1280, sample_fps: float = 8.0):
         self.max_width  = max_width
         self.sample_fps = sample_fps
-        self.detector   = YOLO("yolov8n.pt") if YOLO else None
+        self.detector   = get_detector()
+        self.team_service = TeamClassificationService()
+        self._last_video_path: Path | None = None
 
     def track_target(
         self,
         video_path: Path,
         click: dict,
-        homography_matrix: np.ndarray,
+        calibration: CalibrationResult | np.ndarray,
         output_video_path: Path,
         start_frame_id: int = 0,
         initial_bbox: dict | None = None,
@@ -197,26 +244,63 @@ class ClassicalCvPipeline:
                 or self._initial_box(selected_frame, click_x, click_y)
             )
 
+        calibration_result = _as_calibration(calibration, selected_frame_raw.shape[1], selected_frame_raw.shape[0])
         samples: dict[int, tuple[TrackPoint, tuple[float, float, float, float]]] = {}
         self._track_forward(
             video_path, start_frame_id, selected_frame, initial_box,
-            frame_interval, source_fps, homography_matrix, scale,
+            frame_interval, source_fps, calibration_result, scale,
             samples, frame_count, progress_callback,
         )
         self._track_backward(
             video_path, start_frame_id, selected_frame, initial_box,
-            frame_interval, source_fps, homography_matrix, scale, samples,
+            frame_interval, source_fps, calibration_result, scale, samples,
         )
         self._write_overlay_video(video_path, output_video_path, samples, frame_interval, source_fps)
         return [sample[0] for _, sample in sorted(samples.items())]
 
     def calibrate_team_templates(self, video_path: Path) -> TeamTemplates:
-        return build_team_templates(
+        self._last_video_path = video_path
+        templates = build_team_templates(
             video_path,
             self._detect_people,
             self._resize,
             self._unscale_bbox,
         )
+        self.team_service.set_templates(templates)
+        return templates
+
+    def _classify_player_detection(
+        self,
+        frame: np.ndarray,
+        bbox: dict,
+        player_key: str,
+        team_templates: TeamTemplates,
+        *,
+        apply_temporal: bool,
+    ) -> tuple[str | None, tuple[int, int, int]]:
+        confirmed, _sample = self.team_service.classify_player(
+            frame,
+            bbox,
+            player_key,
+            apply_temporal=apply_temporal,
+        )
+        if confirmed == "referee" or confirmed == "unconfirmed":
+            return None, NEUTRAL_TEAM_RGB
+        color_rgb = (
+            team_templates.team_a_color_rgb
+            if confirmed == "team_a"
+            else team_templates.team_b_color_rgb
+        )
+        return confirmed, color_rgb
+
+    def _maybe_rebuild_team_templates(self, frame_counts: dict[str, int]) -> TeamTemplates | None:
+        if not detect_team_conflict({"team_a": frame_counts.get("team_a", 0), "team_b": frame_counts.get("team_b", 0)}):
+            return None
+        if not self._last_video_path:
+            return None
+        rebuilt = self.calibrate_team_templates(self._last_video_path)
+        rebuilt.warnings.append("Team templates were rebuilt after a same-team conflict was detected.")
+        return rebuilt
 
     def detect_frame_objects(
         self,
@@ -239,40 +323,67 @@ class ClassicalCvPipeline:
             return []
 
         resized, scale = self._resize(frame)
-        detections: list[dict] = []
+        if team_templates is not None:
+            self._last_video_path = video_path
+            self.team_service.set_templates(team_templates)
+
+        pending_players: list[tuple[dict, float, str]] = []
         player_index = 0
         for bbox in self._detect_people(resized):
             x, y, w, h, confidence = bbox
             original_bbox = self._unscale_bbox((x, y, w, h), scale)
-            if team_templates is not None:
-                histogram = extract_shirt_histogram(frame, original_bbox)
-                if histogram is None:
-                    continue
-                team_id = classify_team(histogram, team_templates)
-                if team_id == "referee":
-                    continue
-                color_rgb = (
-                    team_templates.team_a_color_rgb
-                    if team_id == "team_a"
-                    else team_templates.team_b_color_rgb
+            player_key = f"frame-{frame_id}-player-{player_index}"
+            pending_players.append((original_bbox, float(confidence), player_key))
+            player_index += 1
+
+        if team_templates is not None and pending_players:
+            confirmed_teams: list[str] = []
+            for original_bbox, _confidence, player_key in pending_players:
+                team_id, _color = self._classify_player_detection(
+                    frame,
+                    original_bbox,
+                    player_key,
+                    team_templates,
+                    apply_temporal=False,
                 )
+                if team_id in {"team_a", "team_b"}:
+                    confirmed_teams.append(team_id)
+            counts = {"team_a": confirmed_teams.count("team_a"), "team_b": confirmed_teams.count("team_b")}
+            rebuilt = self._maybe_rebuild_team_templates(counts)
+            if rebuilt is not None:
+                team_templates = rebuilt
+                self.team_service.set_templates(team_templates)
+
+        detections: list[dict] = []
+        output_index = 0
+        for original_bbox, confidence, player_key in pending_players:
+            if team_templates is not None:
+                team_id, color_rgb = self._classify_player_detection(
+                    frame,
+                    original_bbox,
+                    player_key,
+                    team_templates,
+                    apply_temporal=False,
+                )
+                if team_id is None:
+                    continue
                 detections.append({
-                    "id": f"player-{frame_id}-{player_index}",
+                    "id": f"player-{frame_id}-{output_index}",
                     "label": team_id,
                     "team": team_id,
-                    "team_label": team_label(team_id),
+                    "team_label": team_label(team_id),  # type: ignore[arg-type]
                     "team_color": {"r": color_rgb[0], "g": color_rgb[1], "b": color_rgb[2]},
-                    "confidence": round(float(confidence), 3),
+                    "confidence": round(confidence, 3),
                     "bbox": original_bbox,
                 })
             else:
                 detections.append({
-                    "id": f"player-{frame_id}-{player_index}",
+                    "id": f"player-{frame_id}-{output_index}",
                     "label": "player",
-                    "confidence": round(float(confidence), 3),
+                    "confidence": round(confidence, 3),
                     "bbox": original_bbox,
                 })
-            player_index += 1
+            output_index += 1
 
         for index, bbox in enumerate(self._detect_ball(resized)):
             x, y, w, h, confidence = bbox
@@ -380,7 +491,7 @@ class ClassicalCvPipeline:
     # ── internal tracking helpers ────────────────────────────────────────────
 
     def _track_forward(self, video_path, start_frame_id, selected_frame, initial_box,
-                       frame_interval, source_fps, homography_matrix, scale,
+                       frame_interval, source_fps, calibration, scale,
                        samples, frame_count, progress_callback):
         tracker = self._create_tracker()
         tracker.init(selected_frame, initial_box)
@@ -403,7 +514,7 @@ class ClassicalCvPipeline:
                     confidence = 0.45
                 if tracked:
                     current_bbox = tuple(float(v) for v in bbox)
-                    self._record_sample(frame_id, bbox, source_fps, homography_matrix, scale, samples, confidence)
+                    self._record_sample(frame_id, bbox, source_fps, calibration, scale, samples, confidence)
                     if progress_callback and len(samples) % 20 == 0:
                         progress_callback(frame_id, frame_count)
             ok, frame = capture.read()
@@ -411,7 +522,7 @@ class ClassicalCvPipeline:
         capture.release()
 
     def _track_backward(self, video_path, start_frame_id, selected_frame, initial_box,
-                        frame_interval, source_fps, homography_matrix, scale, samples):
+                        frame_interval, source_fps, calibration, scale, samples):
         tracker = self._create_tracker()
         tracker.init(selected_frame, initial_box)
         capture = cv2.VideoCapture(str(video_path))
@@ -433,19 +544,20 @@ class ClassicalCvPipeline:
                 confidence = 0.4
             if tracked:
                 current_bbox = tuple(float(v) for v in bbox)
-                self._record_sample(frame_id, bbox, source_fps, homography_matrix, scale, samples, confidence)
+                self._record_sample(frame_id, bbox, source_fps, calibration, scale, samples, confidence)
         capture.release()
 
-    def _record_sample(self, frame_id, bbox, source_fps, homography_matrix, scale, samples, confidence):
+    def _record_sample(self, frame_id, bbox, source_fps, calibration, scale, samples, confidence):
         x, y, w, h = [float(v) for v in bbox]
         foot_px = ((x + w / 2.0) / scale, (y + h) / scale)
-        x_m, y_m = pixel_to_field(homography_matrix, foot_px)
-        samples[frame_id] = (
-            TrackPoint(frame_id=frame_id, time_s=frame_id / source_fps,
-                       x_m=x_m, y_m=y_m,
-                       confidence=max(min(float(confidence), 1.0), 0.0)),
-            (x, y, w, h),
+        point = build_track_point(
+            calibration,
+            frame_id,
+            frame_id / source_fps,
+            foot_px,
+            confidence,
         )
+        samples[frame_id] = (point, (x, y, w, h))
 
     def _write_overlay_video(self, video_path, output_video_path, samples, frame_interval, source_fps):
         capture = cv2.VideoCapture(str(video_path))
@@ -623,20 +735,43 @@ class ClassicalCvPipeline:
         if team_templates is None:
             return candidates
 
+        self.team_service.set_templates(team_templates)
+
+        def classify_candidates() -> list[tuple[dict, str | None]]:
+            classified: list[tuple[dict, str | None]] = []
+            for candidate in candidates:
+                bbox = candidate["bbox"]
+                bbox_dict = {
+                    "x": bbox[0],
+                    "y": bbox[1],
+                    "width": bbox[2],
+                    "height": bbox[3],
+                }
+                player_key = str(candidate.get("track_id", candidate.get("player_id", "unknown")))
+                team_id, _color = self._classify_player_detection(
+                    frame,
+                    bbox_dict,
+                    player_key,
+                    team_templates,
+                    apply_temporal=True,
+                )
+                classified.append((candidate, team_id))
+            return classified
+
+        classified = classify_candidates()
+        team_counts = {
+            "team_a": sum(1 for _, team in classified if team == "team_a"),
+            "team_b": sum(1 for _, team in classified if team == "team_b"),
+        }
+        rebuilt = self._maybe_rebuild_team_templates(team_counts)
+        if rebuilt is not None:
+            team_templates = rebuilt
+            self.team_service.set_templates(team_templates)
+            classified = classify_candidates()
+
         filtered: list[dict] = []
-        for candidate in candidates:
-            bbox = candidate["bbox"]
-            bbox_dict = {
-                "x": bbox[0],
-                "y": bbox[1],
-                "width": bbox[2],
-                "height": bbox[3],
-            }
-            histogram = extract_shirt_histogram(frame, bbox_dict)
-            if histogram is None:
-                continue
-            team_id = classify_team(histogram, team_templates)
-            if team_id == "referee":
+        for candidate, team_id in classified:
+            if team_id not in {"team_a", "team_b"}:
                 continue
             filtered.append({**candidate, "team": team_id})
         return filtered
@@ -650,14 +785,14 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
     See module docstring for the list of fixes applied.
     """
 
-    def __init__(self, max_width: int = 1280, sample_fps: float = 25.0):
+    def __init__(self, max_width: int = 1280, sample_fps: float = 8.0):
         super().__init__(max_width=max_width, sample_fps=sample_fps)
 
     def track_target(
         self,
         video_path: Path,
         click: dict,
-        homography_matrix: np.ndarray,
+        calibration: CalibrationResult | np.ndarray,
         start_frame_id: int = 0,
         initial_bbox: dict | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -665,16 +800,19 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
     ) -> list[TrackPoint]:
         if not self.detector:
             fallback = video_path.with_name("classical-fallback-overlay.mp4")
-            return super().track_target(video_path, click, homography_matrix,
+            return super().track_target(video_path, click, calibration,
                                         fallback, start_frame_id, initial_bbox,
                                         progress_callback)
 
         cap = cv2.VideoCapture(str(video_path))
         source_fps  = cap.get(cv2.CAP_PROP_FPS) or 30.0
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
         cap.release()
         if frame_count > 0:
             start_frame_id = min(max(start_frame_id, 0), frame_count - 1)
+        calibration_result = _as_calibration(calibration, frame_width, frame_height)
 
         # FIX 1: build a richer initial feature from multiple frames
         target_feature = self._build_initial_feature(video_path, start_frame_id, initial_bbox)
@@ -717,7 +855,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
                 tid = int(c["track_id"])
                 pending_samples.setdefault(tid, []).append(
                     self._track_point_from_bbox(frame_id, source_fps,
-                                                c["bbox"], homography_matrix,
+                                                c["bbox"], calibration_result,
                                                 c["confidence"])
                 )
 
@@ -802,7 +940,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
                 continue
 
             pt = self._track_point_from_bbox(
-                frame_id, source_fps, selected["bbox"], homography_matrix,
+                frame_id, source_fps, selected["bbox"], calibration_result,
                 selected["confidence"])
             target_samples[frame_id] = pt
 
@@ -824,7 +962,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
 
         if not points:
             fallback = video_path.with_name("classical-fallback-overlay.mp4")
-            return super().track_target(video_path, click, homography_matrix,
+            return super().track_target(video_path, click, calibration_result,
                                         fallback, start_frame_id, initial_bbox,
                                         progress_callback)
         return points
@@ -833,7 +971,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         self,
         video_path: Path,
         click: dict,
-        homography_matrix: np.ndarray,
+        calibration: CalibrationResult | np.ndarray,
         start_frame_id: int = 0,
         initial_bbox: dict | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
@@ -842,7 +980,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         """Track target player and ball at full frame rate for shot-power analysis."""
         if not self.detector:
             player_points = super().track_target(
-                video_path, click, homography_matrix,
+                video_path, click, calibration,
                 video_path.with_name("classical-fallback-overlay.mp4"),
                 start_frame_id, initial_bbox, progress_callback,
             )
@@ -851,9 +989,12 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         cap = cv2.VideoCapture(str(video_path))
         source_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
         cap.release()
         if frame_count > 0:
             start_frame_id = min(max(start_frame_id, 0), frame_count - 1)
+        calibration_result = _as_calibration(calibration, frame_width, frame_height)
 
         target_feature = self._build_initial_feature(video_path, start_frame_id, initial_bbox)
         target_track_id: int | None = None
@@ -895,7 +1036,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
                 pending_samples.setdefault(track_id, []).append(
                     self._track_point_from_bbox_with_feet(
                         frame_id, source_fps, candidate["bbox"],
-                        homography_matrix, candidate["confidence"],
+                        calibration_result, candidate["confidence"],
                     )
                 )
 
@@ -937,7 +1078,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
                 if selected is not None:
                     point = self._track_point_from_bbox_with_feet(
                         frame_id, source_fps, selected["bbox"],
-                        homography_matrix, selected["confidence"],
+                        calibration_result, selected["confidence"],
                     )
                     target_samples[frame_id] = point
                     blend_alpha = 0.55 if selected["confidence"] > 0.65 else 0.72
@@ -952,7 +1093,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
             ball_point = ball_tracker.step(
                 frame_id,
                 frame_id / source_fps,
-                homography_matrix,
+                calibration_result,
                 ball_detection,
             )
             if ball_point is not None:
@@ -966,7 +1107,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
 
         if not player_points:
             player_points = super().track_target(
-                video_path, click, homography_matrix,
+                video_path, click, calibration_result,
                 video_path.with_name("classical-fallback-overlay.mp4"),
                 start_frame_id, initial_bbox, progress_callback,
             )
@@ -978,7 +1119,7 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         frame_id: int,
         source_fps: float,
         bbox: tuple[float, float, float, float],
-        homography_matrix: np.ndarray,
+        calibration: CalibrationResult,
         confidence: float,
     ) -> TrackPoint:
         x, y, w, h = bbox
@@ -986,16 +1127,16 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         center_x = x + w / 2.0
         left_foot = (center_x - w / 4.0, foot_y)
         right_foot = (center_x + w / 4.0, foot_y)
-        x_m, y_m = pixel_to_field(homography_matrix, (center_x, foot_y))
-        return TrackPoint(
-            frame_id=frame_id,
-            time_s=frame_id / source_fps,
-            x_m=x_m,
-            y_m=y_m,
-            confidence=max(min(confidence, 1.0), 0.0),
-            left_foot_px=left_foot,
-            right_foot_px=right_foot,
+        point = build_track_point(
+            calibration,
+            frame_id,
+            frame_id / source_fps,
+            (center_x, foot_y),
+            confidence,
         )
+        point.left_foot_px = left_foot
+        point.right_foot_px = right_foot
+        return point
 
     # ── Candidate helpers ────────────────────────────────────────────────────
 
@@ -1120,12 +1261,15 @@ class ReIdByteTrackPipeline(ClassicalCvPipeline):
         total   = float(blended.sum())
         return blended / total if total > 0 else blended
 
-    def _track_point_from_bbox(self, frame_id, source_fps, bbox, homography_matrix, confidence):
+    def _track_point_from_bbox(self, frame_id, source_fps, bbox, calibration, confidence):
         x, y, w, h = bbox
-        x_m, y_m = pixel_to_field(homography_matrix, (x+w/2.0, y+h))
-        return TrackPoint(frame_id=frame_id, time_s=frame_id/source_fps,
-                          x_m=x_m, y_m=y_m,
-                          confidence=max(min(confidence,1.0),0.0))
+        return build_track_point(
+            calibration,
+            frame_id,
+            frame_id / source_fps,
+            (x + w / 2.0, y + h),
+            confidence,
+        )
 
     def _bbox_tuple(self, bbox):
         if not bbox: return None

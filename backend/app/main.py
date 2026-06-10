@@ -1,11 +1,14 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
 _team_calibration_lock = Lock()
+_cv_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cv-worker")
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.models import (
@@ -19,6 +22,7 @@ from app.models import (
 )
 from app.services.cv_pipeline import get_cv_pipeline
 from app.services.processing import process_video
+from app.services.upload_limits import MAX_UPLOAD_BYTES, MAX_VIDEO_DURATION_S
 from app.services.team_classification import TeamTemplates
 from app.services.storage import (
     MEDIA_ROOT,
@@ -28,6 +32,7 @@ from app.services.storage import (
     save_setup_frame,
     save_upload,
     update_video_record,
+    video_dir,
     video_metadata,
 )
 
@@ -43,6 +48,11 @@ app.add_middleware(
 
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
+
+
+@app.on_event("startup")
+def warmup_cv_pipeline() -> None:
+    get_cv_pipeline()
 
 
 @app.get("/health")
@@ -130,6 +140,17 @@ def _select_detection(detections: list[dict], click: dict, detection_id: str | N
     return min(candidates, key=score)
 
 
+def _extract_setup_frame(video_id: str, video_path: Path) -> None:
+    try:
+        setup_frame = save_setup_frame(video_id, video_path)
+        record = get_video_record(video_id)
+        if record:
+            record["setup_frame"] = setup_frame
+            update_video_record(video_id, record)
+    except Exception:
+        pass
+
+
 @app.post("/upload-video", response_model=UploadResponse)
 async def upload_video(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()) -> UploadResponse:
     suffix = Path(file.filename or "").suffix.lower()
@@ -138,8 +159,31 @@ async def upload_video(file: UploadFile = File(...), background_tasks: Backgroun
 
     video_id = str(uuid4())
     video_path = await save_upload(video_id, file, suffix)
-    setup_frame = save_setup_frame(video_id, video_path)
+
+    if video_path.stat().st_size > MAX_UPLOAD_BYTES:
+        video_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit.",
+        )
+
     metadata = video_metadata(video_path)
+    duration_s = float(metadata.get("duration_s") or 0.0)
+    if duration_s > MAX_VIDEO_DURATION_S:
+        video_path.unlink(missing_ok=True)
+        try:
+            import shutil
+            shutil.rmtree(video_dir(video_id), ignore_errors=True)
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This clip is {duration_s:.1f} seconds long. "
+                f"Maximum allowed duration is {int(MAX_VIDEO_DURATION_S)} seconds."
+            ),
+        )
+
     source_url = f"/media/{video_id}/{video_path.name}"
 
     create_video_record(
@@ -150,7 +194,7 @@ async def upload_video(file: UploadFile = File(...), background_tasks: Backgroun
             "status": "uploaded",
             "video_path": str(video_path),
             "source_url": source_url,
-            "setup_frame": setup_frame,
+            "setup_frame": None,
             "setup_frame_id": 0,
             "video_metadata": metadata,
             "target_player": None,
@@ -161,7 +205,7 @@ async def upload_video(file: UploadFile = File(...), background_tasks: Backgroun
             "progress": {"stage": "uploaded", "percent": 1, "message": "Video uploaded"},
         },
     )
-    background_tasks.add_task(_calibrate_team_classification, video_id)
+    background_tasks.add_task(_extract_setup_frame, video_id, video_path)
 
     return UploadResponse(
         video_id=video_id,
@@ -261,7 +305,10 @@ def set_pitch_polygon(payload: PitchSetupRequest) -> dict[str, object]:
         raise HTTPException(status_code=404, detail="Video not found.")
 
     if 0 < len(payload.pitch_polygon) < 4:
-        raise HTTPException(status_code=400, detail="Pitch polygon requires at least 4 points, or leave it empty for auto calibration.")
+        raise HTTPException(
+            status_code=400,
+            detail="Pitch polygon requires at least 4 points, or leave it empty to attempt pitch-line auto-detection.",
+        )
 
     record["pitch_setup"] = payload.model_dump()
     record["status"] = "setup_complete"
@@ -272,7 +319,7 @@ def set_pitch_polygon(payload: PitchSetupRequest) -> dict[str, object]:
 
 
 @app.post("/process-video")
-def process(payload: ProcessRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+def process(payload: ProcessRequest) -> dict[str, str]:
     record = get_video_record(payload.video_id)
     if not record:
         raise HTTPException(status_code=404, detail="Video not found.")
@@ -284,9 +331,9 @@ def process(payload: ProcessRequest, background_tasks: BackgroundTasks) -> dict[
     record["warnings"] = []
     record["results"] = None
     record["assets"] = None
-    record["progress"] = {"stage": "queued", "percent": 10, "message": "Queued for processing"}
+    record["progress"] = {"stage": "calibration", "percent": 2, "message": "Calibrating pitch"}
     update_video_record(payload.video_id, record)
-    background_tasks.add_task(process_video, payload.video_id)
+    _cv_executor.submit(process_video, payload.video_id)
 
     return {"video_id": payload.video_id, "status": "processing"}
 
@@ -303,4 +350,23 @@ def results(video_id: str) -> VideoResult:
         video_path = Path(record["video_path"])
         record["source_url"] = f"/media/{video_id}/{video_path.name}"
         update_video_record(video_id, record)
+    detections_file = MEDIA_ROOT / video_id / "detections.json"
+    if detections_file.exists():
+        assets = dict(record.get("assets") or {})
+        assets["detections_json"] = f"/media/{video_id}/detections.json"
+        if record.get("assets") != assets:
+            record["assets"] = assets
+            update_video_record(video_id, record)
     return VideoResult.model_validate(record)
+
+
+@app.get("/preview/{video_id}")
+def preview_frame(video_id: str) -> FileResponse:
+    preview_path = MEDIA_ROOT / video_id / "preview-frame.jpg"
+    if not preview_path.exists():
+        raise HTTPException(status_code=404, detail="Preview frame not ready yet.")
+    return FileResponse(
+        preview_path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )

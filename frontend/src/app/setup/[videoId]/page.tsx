@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { SetupCanvas } from "@/components/SetupCanvas";
-import { getFrameDetections, getResults, isPlayerDetection, mediaUrl, processVideo, selectPlayer, setPitchPolygon } from "@/lib/api";
+import { getFrameDetections, getResults, mediaUrl, processVideo, selectPlayer, setPitchPolygon } from "@/lib/api";
 import type { AnalysisMode, Detection, Point, TeamClassificationInfo, VideoMetadata } from "@/lib/api";
 import {
   CheckCircle2,
-  Crosshair,
   Flag,
   Gauge,
   Loader2,
@@ -39,15 +38,13 @@ export default function SetupPage() {
   const [goalRight, setGoalRight] = useState<Point | null>(null);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("max_speed");
   const [busy, setBusy] = useState(false);
-  const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teamClassification, setTeamClassification] = useState<TeamClassificationInfo | null>(null);
   const [preparing, setPreparing] = useState(true);
-  const [prepareMessage, setPrepareMessage] = useState("Loading video…");
+  const [prepareMessage, setPrepareMessage] = useState("Preparing setup frame…");
 
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
 
     async function bootstrap() {
       try {
@@ -57,7 +54,7 @@ export default function SetupPage() {
         setSourceUrl(mediaUrl(result.source_url));
         setFrameId(result.setup_frame_id ?? 0);
         setMetadata(result.video_metadata ?? null);
-        setTeamClassification(result.team_classification ?? null);
+        if (result.team_classification) setTeamClassification(result.team_classification);
 
         const target = result.target_player as { click?: Point; bbox?: Detection["bbox"]; detection_id?: string } | null;
         if (target?.click) setPlayerPoint(target.click);
@@ -70,20 +67,12 @@ export default function SetupPage() {
           });
         }
 
-        if (result.team_classification) {
-          setTeamClassification(result.team_classification);
+        if (result.setup_frame) {
           setPreparing(false);
           return;
         }
 
-        if (attempts < 90) {
-          setPrepareMessage("Calibrating team colours… first load may take up to a minute.");
-          attempts += 1;
-          window.setTimeout(bootstrap, 1500);
-          return;
-        }
-
-        setPreparing(false);
+        setPrepareMessage("Extracting first frame…");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load video.");
@@ -93,8 +82,10 @@ export default function SetupPage() {
     }
 
     bootstrap();
+    const interval = window.setInterval(bootstrap, 1000);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, [videoId]);
 
@@ -102,14 +93,11 @@ export default function SetupPage() {
     if (preparing) return;
 
     const timer = window.setTimeout(async () => {
-      setDetecting(true);
       try {
         const response = await getFrameDetections(videoId, frameId);
         setDetections(response.detections);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load detections.");
-      } finally {
-        setDetecting(false);
       }
     }, 260);
 
@@ -117,8 +105,6 @@ export default function SetupPage() {
   }, [frameId, videoId, preparing]);
 
   const ready = useMemo(() => Boolean(playerPoint), [playerPoint]);
-  const playerCount = detections.filter(isPlayerDetection).length;
-  const ballCount = detections.filter((detection) => detection.label === "ball").length;
 
   async function confirmSetup() {
     if (!playerPoint) return;
@@ -183,24 +169,14 @@ export default function SetupPage() {
               <ModeButton active={mode === "goal-right"} onClick={() => setMode("goal-right")} icon={<Flag size={17} />} label="Right goal" />
             </div>
 
-            <div className="mt-5 rounded-lg border border-white/10 bg-slate-950/50 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-white">Frame intelligence</span>
-                {detecting ? <Loader2 size={16} className="animate-spin text-cyan-300" /> : <Crosshair size={16} className="text-cyan-300" />}
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <StatPill label="Players" value={playerCount} />
-                <StatPill label="Ball" value={ballCount} />
-              </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Detections refresh when scrubbing stops. Click a player box to persist that identity for processing.
-              </p>
-            </div>
-
             <div className="mt-5 space-y-3 text-sm text-slate-400">
               <StatusRow label="Frame" done value={`${frameId}`} />
               <StatusRow label="Player" done={Boolean(playerPoint)} value={selectedDetection ? "box assigned" : playerPoint ? "point selected" : "required"} />
-              <StatusRow label="Pitch" done={pitchPolygon.length >= 4} value={pitchPolygon.length >= 4 ? `${pitchPolygon.length} points` : "auto"} />
+              <StatusRow
+                label="Pitch"
+                done={pitchPolygon.length >= 4}
+                value={pitchPolygon.length >= 4 ? `${pitchPolygon.length} points` : "auto-detect or pixel mode"}
+              />
               <StatusRow label="Goals" done={Boolean(goalLeft && goalRight)} value={goalLeft || goalRight ? "partial" : "optional"} />
             </div>
 
@@ -248,10 +224,12 @@ export default function SetupPage() {
 
           <div>
             {preparing ? (
-              <div className="card grid aspect-video place-items-center p-8 text-center">
-                <Loader2 className="mb-4 animate-spin text-[#3b82f6]" size={32} />
-                <p className="text-sm text-[#f1f5f9]">{prepareMessage}</p>
-                <p className="mt-2 text-xs text-[#64748b]">Loading the AI model and analysing kit colours.</p>
+              <div className="card aspect-video overflow-hidden p-0">
+                <div className="grid h-full place-items-center p-8 text-center">
+                  <div className="mb-4 h-40 w-full max-w-xl animate-pulse rounded-lg bg-[#ffffff08]" />
+                  <Loader2 className="mb-3 animate-spin text-[#3b82f6]" size={28} />
+                  <p className="text-sm text-[#f1f5f9]">{prepareMessage}</p>
+                </div>
               </div>
             ) : sourceUrl ? (
               <SetupCanvas
@@ -344,15 +322,6 @@ function StatusRow({ label, value, done }: { label: string; value: string; done:
         {done && <CheckCircle2 size={14} />}
         {value}
       </span>
-    </div>
-  );
-}
-
-function StatPill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-[#ffffff14] bg-[#0a0a0f] p-3">
-      <div className="text-xl font-semibold tabular-nums text-[#f1f5f9]">{value}</div>
-      <div className="text-xs text-[#64748b]">{label}</div>
     </div>
   );
 }

@@ -2,12 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { ProcessingPreview } from "@/components/ProcessingPreview";
 import { ProcessingProgress } from "@/components/ProcessingProgress";
 import { ConfidenceDot, SpeedChart } from "@/components/SpeedChart";
 import { WarningBanners } from "@/components/WarningBanners";
-import { getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
-import { Activity, Crosshair, Gauge, Loader2, Route, Target, Timer, Trophy, Zap } from "lucide-react";
+import { VideoPlaybackOverlay } from "@/components/VideoPlaybackOverlay";
+import { getDetectionsOverlay, getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
+import type { DetectionsOverlay } from "@/lib/overlay";
+import { Activity, Crosshair, Loader2, Route, Target, Trophy, Zap } from "lucide-react";
 import { useParams } from "next/navigation";
+
+type ResultsTab = "overview" | "heatmaps" | "playback";
 
 function isShotMetrics(results: Metrics | ShotMetrics): results is ShotMetrics {
   return "peak_shot_speed_kmh" in results;
@@ -19,6 +24,19 @@ export default function ResultsPage() {
   const [result, setResult] = useState<VideoResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bestShotFrameUrl, setBestShotFrameUrl] = useState<string | null>(null);
+  const [overlay, setOverlay] = useState<DetectionsOverlay | null>(null);
+  const [overlayLoading, setOverlayLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<ResultsTab>("overview");
+  const [pollMs, setPollMs] = useState(1500);
+
+  useEffect(() => {
+    function onVisibilityChange() {
+      setPollMs(document.hidden ? 5000 : 1500);
+    }
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,17 +49,18 @@ export default function ResultsPage() {
       }
     };
     refresh();
-    const interval = window.setInterval(refresh, 1500);
+    const interval = window.setInterval(refresh, pollMs);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [videoId]);
+  }, [videoId, pollMs]);
 
   const results = result?.results;
   const analysisMode = result?.mode ?? "max_speed";
   const progress = result?.progress;
-  const progressPercent = progress?.percent ?? (result?.status === "complete" ? 100 : 0);
+  const isProcessing = result?.status === "processing" || !result;
+  const progressPercent = isProcessing ? (progress?.percent ?? 0) : progress?.percent ?? 100;
   const target = result?.target_player as { player_id?: string; team_label?: string } | null | undefined;
 
   const speedMetrics = results && !isShotMetrics(results) ? results : null;
@@ -55,12 +74,25 @@ export default function ResultsPage() {
     "Player";
   const teamLabel = speedMetrics?.team_label ?? shotMetrics?.team_label ?? (target?.team_label as string | undefined);
 
-  const frameLabel =
-    progress?.message && progress.message.includes("frame")
-      ? progress.message
-      : progress?.stage === "tracking"
-        ? progress.message
-        : undefined;
+  useEffect(() => {
+    if (activeTab !== "playback" || result?.status !== "complete") return;
+    const detectionsPath = result.assets?.detections_json ?? `/media/${videoId}/detections.json`;
+    let cancelled = false;
+    setOverlayLoading(true);
+    getDetectionsOverlay(detectionsPath)
+      .then((payload) => {
+        if (!cancelled) setOverlay(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setOverlay(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOverlayLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, result?.status, result?.assets?.detections_json, videoId]);
 
   useEffect(() => {
     if (!shotMetrics?.best_shot) {
@@ -108,23 +140,73 @@ export default function ResultsPage() {
 
         <WarningBanners warnings={result?.warnings ?? []} />
 
-        {(result?.status === "processing" || !result) && (
-          <ProcessingProgress
-            stage={progress?.stage}
-            percent={progressPercent}
-            message={progress?.message}
-            frameLabel={frameLabel}
-          />
+        {isProcessing && (
+          <>
+            <ProcessingProgress
+              stage={progress?.stage}
+              percent={progressPercent}
+              message={progress?.message}
+              trackedSoFar={progress?.tracked_so_far}
+              predictedSoFar={progress?.predicted_so_far}
+              lostSoFar={progress?.lost_so_far}
+            />
+            <ProcessingPreview videoId={videoId} active />
+          </>
         )}
 
-        {speedMetrics && analysisMode !== "max_shot_power" ? (
-          <div className="mt-6 space-y-5">
+        {result?.status === "complete" && (
+          <div className="mb-6 flex flex-wrap gap-2">
+            <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")} label="Overview" />
+            {analysisMode !== "max_shot_power" && (
+              <TabButton active={activeTab === "heatmaps"} onClick={() => setActiveTab("heatmaps")} label="Heatmaps" />
+            )}
+            <TabButton active={activeTab === "playback"} onClick={() => setActiveTab("playback")} label="Playback" />
+          </div>
+        )}
+
+        {result?.status === "complete" && activeTab === "playback" && result.source_url && result.video_metadata ? (
+          <div className="mb-6">
+            {overlayLoading ? (
+              <div className="card grid aspect-video place-items-center text-sm text-[#64748b]">
+                <Loader2 className="mb-2 animate-spin text-[#3b82f6]" size={22} />
+                Loading detection overlay…
+              </div>
+            ) : (
+              <VideoPlaybackOverlay
+                videoUrl={mediaUrl(result.source_url) ?? ""}
+                fps={result.video_metadata.fps}
+                frameCount={Math.max(result.video_metadata.frame_count - 1, 0)}
+                durationS={result.video_metadata.duration_s}
+                overlay={overlay}
+                targetPlayerId={(result.target_player as { player_id?: string } | null)?.player_id ?? overlay?.target_id}
+              />
+            )}
+          </div>
+        ) : null}
+
+        {result?.status === "complete" && activeTab === "heatmaps" && speedMetrics ? (
+          <HeatmapsPanel
+            positionUrl={result.assets?.position_heatmap}
+            speedUrl={result.assets?.speed_heatmap}
+          />
+        ) : null}
+
+        {speedMetrics && analysisMode !== "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
+          <div className="mt-2 space-y-5">
+            <TrackingResultWarnings metrics={speedMetrics} />
+
             <div className="card p-6">
               <p className="text-sm text-[#64748b]">Top speed</p>
               <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">{speedMetrics.top_speed_kmh}</span>
-                  <span className="ml-2 text-xl text-[#64748b]">km/h</span>
+                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">
+                    {speedMetrics.units === "pixels"
+                      ? speedMetrics.top_speed_px_per_s
+                      : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh)}
+                  </span>
+                  <span className="ml-2 text-xl text-[#64748b]">
+                    {speedMetrics.units === "pixels" ? "px/s" : "km/h"}
+                  </span>
                 </div>
                 <ConfidenceDot score={confidenceScore} />
               </div>
@@ -135,10 +217,34 @@ export default function ResultsPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard icon={<Activity size={18} />} label="Average speed" value={`${speedMetrics.avg_speed_kmh} km/h`} />
-              <MetricCard icon={<Route size={18} />} label="Total distance" value={`${speedMetrics.total_distance_m} m`} />
-              <MetricCard icon={<Zap size={18} />} label="Sprint count" value={`${speedMetrics.sprint_count}`} />
-              <MetricCard icon={<Route size={18} />} label="Sprint distance" value={`${speedMetrics.sprint_distance_m} m`} />
+              <MetricCard
+                icon={<Activity size={18} />}
+                label="Average speed"
+                value={
+                  speedMetrics.units === "pixels"
+                    ? `${speedMetrics.avg_speed_px_per_s} px/s`
+                    : `${speedMetrics.avg_speed_kmh} km/h`
+                }
+              />
+              <MetricCard
+                icon={<Route size={18} />}
+                label="Total distance"
+                value={
+                  speedMetrics.units === "pixels"
+                    ? `${speedMetrics.total_distance_px ?? speedMetrics.total_distance_m} px`
+                    : `${speedMetrics.distance_m ?? speedMetrics.total_distance_m} m`
+                }
+              />
+              <MetricCard
+                icon={<Zap size={18} />}
+                label="Tracked frames"
+                value={`${speedMetrics.tracked_frames ?? speedMetrics.usable_track_points}`}
+              />
+              <MetricCard
+                icon={<Route size={18} />}
+                label="Predicted / lost"
+                value={`${speedMetrics.predicted_frames ?? 0} / ${speedMetrics.lost_frames ?? 0}`}
+              />
             </div>
 
             <div className="card p-5">
@@ -148,14 +254,9 @@ export default function ResultsPage() {
               </div>
               <SpeedChart data={speedMetrics.speed_series ?? []} />
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <MetricCard icon={<Timer size={18} />} label="Peak acceleration" value={`${speedMetrics.peak_acceleration_mps2} m/s²`} />
-              <MetricCard icon={<Gauge size={18} />} label="Active distance" value={`${speedMetrics.active_distance_m} m`} />
-            </div>
           </div>
-        ) : shotMetrics && analysisMode === "max_shot_power" ? (
-          <div className="mt-6 space-y-5">
+        ) : shotMetrics && analysisMode === "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
+          <div className="mt-2 space-y-5">
             <div className="card p-6">
               <p className="text-sm text-[#64748b]">Peak shot speed</p>
               <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
@@ -185,6 +286,7 @@ export default function ResultsPage() {
                 src={bestShotFrameUrl}
                 alt="Best shot frame"
                 className="card aspect-video w-full object-cover"
+                loading="lazy"
               />
             )}
 
@@ -219,14 +321,88 @@ export default function ResultsPage() {
           <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#64748b]">
             Processing failed. Try re-uploading or selecting a clearer player frame.
           </div>
-        ) : result?.status !== "processing" ? (
-          <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#64748b]">
-            <Loader2 className="mb-3 animate-spin text-[#3b82f6]" size={24} />
-            Metrics will appear when processing completes.
-          </div>
         ) : null}
       </section>
     </AppShell>
+  );
+}
+
+function TabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-4 py-2 text-sm font-medium ${
+        active ? "bg-[#3b82f6] text-white" : "bg-[#ffffff08] text-[#64748b] hover:text-[#f1f5f9]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function HeatmapsPanel({
+  positionUrl,
+  speedUrl,
+}: {
+  positionUrl?: string | null;
+  speedUrl?: string | null;
+}) {
+  if (!positionUrl && !speedUrl) {
+    return (
+      <div className="card grid min-h-48 place-items-center p-8 text-sm text-[#64748b]">
+        Heatmaps are not available for this analysis.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {positionUrl ? (
+        <div className="card overflow-hidden p-3">
+          <p className="mb-2 text-sm text-[#64748b]">Position heatmap</p>
+          <img src={mediaUrl(positionUrl) ?? ""} alt="Position heatmap" className="w-full rounded-lg" loading="lazy" />
+        </div>
+      ) : null}
+      {speedUrl ? (
+        <div className="card overflow-hidden p-3">
+          <p className="mb-2 text-sm text-[#64748b]">Speed heatmap</p>
+          <img src={mediaUrl(speedUrl) ?? ""} alt="Speed heatmap" className="w-full rounded-lg" loading="lazy" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TrackingResultWarnings({ metrics }: { metrics: Metrics }) {
+  const tracked = metrics.tracked_frames ?? metrics.usable_track_points ?? 0;
+  const predicted = metrics.predicted_frames ?? 0;
+  const lost = metrics.lost_frames ?? 0;
+  const total = tracked + predicted + lost;
+  const warnings: string[] = [];
+
+  if (total > 0 && lost / total > 0.2) {
+    warnings.push(
+      "The selected player was out of view for a significant portion of the clip. Speed and distance may be understated.",
+    );
+  }
+  if ((metrics.confidence_score ?? 0) < 0.5) {
+    warnings.push("Tracking confidence is low. Results should be treated as estimates.");
+  }
+  if (tracked > 0 && predicted / tracked > 0.3) {
+    warnings.push("Significant portions of the track were predicted rather than directly observed.");
+  }
+
+  if (!warnings.length) return null;
+
+  return (
+    <div className="space-y-1">
+      {warnings.map((warning) => (
+        <p key={warning} className="text-sm text-amber-400">
+          {warning}
+        </p>
+      ))}
+    </div>
   );
 }
 

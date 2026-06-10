@@ -1,9 +1,10 @@
 "use client";
 
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Detection, Point, TeamClassificationInfo, VideoMetadata } from "@/lib/api";
 import { isPlayerDetection, teamColorCss } from "@/lib/api";
+import { drawSetupDetections } from "@/lib/overlay";
 
 type Mode = "player" | "pitch" | "goal-left" | "goal-right";
 
@@ -47,6 +48,7 @@ export function SetupCanvas({
   onRemovePitchPoint,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const fps = metadata?.fps || 30;
@@ -56,12 +58,46 @@ export function SetupCanvas({
   const height = metadata?.height || 1;
 
   const playerDetections = useMemo(() => detections.filter(isPlayerDetection), [detections]);
-  const ballDetections = useMemo(() => detections.filter((d) => d.label === "ball"), [detections]);
+
+  const redraw = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    drawSetupDetections(
+      canvas,
+      video,
+      playerDetections,
+      width,
+      height,
+      selectedDetection?.player_id ?? selectedDetection?.id ?? null,
+    );
+  }, [height, playerDetections, selectedDetection, width]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const observer = new ResizeObserver(() => redraw());
+    observer.observe(video);
+    video.addEventListener("timeupdate", redraw);
+    video.addEventListener("loadedmetadata", redraw);
+    video.addEventListener("seeked", redraw);
+    return () => {
+      observer.disconnect();
+      video.removeEventListener("timeupdate", redraw);
+      video.removeEventListener("loadedmetadata", redraw);
+      video.removeEventListener("seeked", redraw);
+    };
+  }, [redraw]);
+
+  useEffect(() => {
+    redraw();
+  }, [detections, frameId, redraw]);
 
   function syncFrameFromVideo() {
     const video = videoRef.current;
     if (!video) return;
     onFrameChange(Math.min(Math.round(video.currentTime * fps), frameCount));
+    redraw();
   }
 
   function setFrame(nextFrame: number) {
@@ -72,13 +108,14 @@ export function SetupCanvas({
     setPlaying(false);
     video.currentTime = bounded / fps;
     onFrameChange(bounded);
+    redraw();
   }
 
   function togglePlayback() {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      video.play();
+      void video.play();
       setPlaying(true);
     } else {
       video.pause();
@@ -119,6 +156,7 @@ export function SetupCanvas({
           src={videoUrl}
           className="h-full w-full object-contain"
           preload="metadata"
+          playsInline
           onTimeUpdate={syncFrameFromVideo}
           onPause={() => {
             setPlaying(false);
@@ -127,8 +165,7 @@ export function SetupCanvas({
           onPlay={() => setPlaying(true)}
           onLoadedMetadata={syncFrameFromVideo}
         />
-        <div className="pointer-events-none absolute inset-0 bg-[#0a0a0f]/35" />
-        <div ref={overlayRef} className="absolute inset-0 cursor-crosshair" onClick={handleOverlayClick}>
+        <div ref={overlayRef} className="absolute inset-0 z-10 cursor-crosshair" onClick={handleOverlayClick}>
           <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
             {pitchPolygon.length > 1 && (
               <polyline
@@ -152,19 +189,6 @@ export function SetupCanvas({
             )}
           </svg>
 
-          {playerDetections.map((detection) => (
-            <DetectionBox
-              key={detection.id}
-              detection={detection}
-              selected={selectedDetection?.id === detection.id}
-              dimmed={Boolean(selectedDetection && selectedDetection.id !== detection.id)}
-              frameWidth={width}
-              frameHeight={height}
-            />
-          ))}
-          {ballDetections.map((detection) => (
-            <DetectionBox key={detection.id} detection={detection} selected={false} frameWidth={width} frameHeight={height} compact />
-          ))}
           {pitchPolygon.map((point, index) => (
             <button
               key={`${point.x}-${point.y}-${index}`}
@@ -180,11 +204,12 @@ export function SetupCanvas({
           ))}
           {playerPoint && (
             <span
-              className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#3b82f6] shadow-[0_0_16px_rgba(59,130,246,0.8)]"
+              className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#3b82f6] shadow-[0_0_16px_rgba(59,130,246,0.8)]"
               style={{ left: `${(playerPoint.x / width) * 100}%`, top: `${(playerPoint.y / height) * 100}%` }}
             />
           )}
         </div>
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-20 h-full w-full" />
 
         {(teamALegend || teamBLegend) && (
           <div className="pointer-events-none absolute right-3 top-3 flex gap-2 rounded-lg border border-[#ffffff14] bg-[#111118]/90 px-3 py-2 text-xs text-[#f1f5f9]">
@@ -237,54 +262,6 @@ export function SetupCanvas({
           <span>{playerDetections.length} players</span>
         </div>
       </div>
-    </div>
-  );
-}
-
-function DetectionBox({
-  detection,
-  selected,
-  dimmed = false,
-  frameWidth,
-  frameHeight,
-  compact = false,
-}: {
-  detection: Detection;
-  selected: boolean;
-  dimmed?: boolean;
-  frameWidth: number;
-  frameHeight: number;
-  compact?: boolean;
-}) {
-  const { bbox } = detection;
-  const teamColor = teamColorCss(detection.team_color);
-  const label = detection.player_id ?? detection.team_label ?? detection.label;
-
-  return (
-    <div
-      className={`pointer-events-none absolute border-2 transition-opacity ${
-        selected
-          ? "border-[#3b82f6] bg-[#3b82f6]/20 shadow-[0_0_0_2px_rgba(59,130,246,0.5)]"
-          : compact
-            ? "border-[#f59e0b] bg-[#f59e0b]/10"
-            : dimmed
-              ? "border-[#ffffff14] bg-black/30 opacity-35"
-              : "bg-black/10"
-      }`}
-      style={{
-        left: `${(bbox.x / frameWidth) * 100}%`,
-        top: `${(bbox.y / frameHeight) * 100}%`,
-        width: `${(bbox.width / frameWidth) * 100}%`,
-        height: `${(bbox.height / frameHeight) * 100}%`,
-        borderColor: selected ? undefined : compact ? undefined : teamColor,
-      }}
-    >
-      <span
-        className="absolute left-0 top-0 -translate-y-full rounded px-1.5 py-0.5 text-[10px] font-bold text-white"
-        style={{ background: selected ? "#3b82f6" : teamColor }}
-      >
-        {label}
-      </span>
     </div>
   );
 }
