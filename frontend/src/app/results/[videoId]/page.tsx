@@ -83,36 +83,19 @@ export default function ResultsPage() {
     let cancelled = false;
     setOverlayLoading(true);
     getDetectionsOverlay(detectionsPath)
-      .then((payload) => {
-        if (!cancelled) setOverlay(payload);
-      })
-      .catch(() => {
-        if (!cancelled) setOverlay(null);
-      })
-      .finally(() => {
-        if (!cancelled) setOverlayLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((payload) => { if (!cancelled) setOverlay(payload); })
+      .catch(() => { if (!cancelled) setOverlay(null); })
+      .finally(() => { if (!cancelled) setOverlayLoading(false); });
+    return () => { cancelled = true; };
   }, [activeTab, result?.status, result?.assets?.detections_json, videoId]);
 
   useEffect(() => {
-    if (!shotMetrics?.best_shot) {
-      setBestShotFrameUrl(null);
-      return;
-    }
+    if (!shotMetrics?.best_shot) { setBestShotFrameUrl(null); return; }
     let cancelled = false;
     getFrame(videoId, shotMetrics.best_shot.frame_id)
-      .then((frame) => {
-        if (!cancelled) setBestShotFrameUrl(mediaUrl(frame.frame_url));
-      })
-      .catch(() => {
-        if (!cancelled) setBestShotFrameUrl(null);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((frame) => { if (!cancelled) setBestShotFrameUrl(mediaUrl(frame.frame_url)); })
+      .catch(() => { if (!cancelled) setBestShotFrameUrl(null); });
+    return () => { cancelled = true; };
   }, [shotMetrics?.best_shot, videoId]);
 
   const sortedShots = useMemo(
@@ -123,20 +106,22 @@ export default function ResultsPage() {
   return (
     <AppShell>
       <section className="analytics-grid mx-auto max-w-7xl px-5 py-8 fade-in">
-        <div className="mb-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-sm text-[#64748b]">
-            <Trophy size={15} className="text-[#3b82f6]" />
+
+        {/* ── Page header ─────────────────────────────────────── */}
+        <div className="mb-8">
+          <div className="chip mb-4 w-fit">
+            <Trophy size={11} />
             Results
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-[#f1f5f9]">Performance dashboard</h1>
-          <p className="mt-1 text-sm text-[#64748b]">
+          <h1 className="display text-4xl text-[#eef2ff]">Performance dashboard</h1>
+          <p className="mt-2 text-sm text-[#6b7a99]">
             {result?.status ?? "loading"}
             {teamLabel ? ` · ${playerLabel} — ${teamLabel}` : playerLabel ? ` · ${playerLabel}` : ""}
           </p>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
@@ -168,8 +153,8 @@ export default function ResultsPage() {
         {result?.status === "complete" && activeTab === "playback" && result.source_url && result.video_metadata ? (
           <div className="mb-6">
             {overlayLoading ? (
-              <div className="card grid aspect-video place-items-center text-sm text-[#64748b]">
-                <Loader2 className="mb-2 animate-spin text-[#3b82f6]" size={22} />
+              <div className="card grid aspect-video place-items-center text-sm text-[#6b7a99]">
+                <Loader2 className="mb-2 animate-spin text-cyan-500" size={22} />
                 Loading detection overlay…
               </div>
             ) : (
@@ -195,41 +180,45 @@ export default function ResultsPage() {
           />
         ) : null}
 
+        {/* ── Speed metrics ─────────────────────────────────────── */}
         {speedMetrics && analysisMode !== "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
-          <div className="mt-2 space-y-5">
+          <div className="mt-2 space-y-4">
             <TrackingResultWarnings metrics={speedMetrics} />
 
-            <div className="card p-6">
-              <div className="grid gap-6 sm:grid-cols-2">
+            {/* Hero stat card */}
+            <div className="card relative overflow-hidden p-8">
+              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-blue-500/6 blur-2xl" />
+              <div className="grid gap-8 sm:grid-cols-2">
                 <div>
-                  <p className="text-sm text-[#64748b]">Top speed</p>
-                  <div className="mt-2 flex items-end gap-2">
-                    <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">
+                  <p className="data-label">Top speed</p>
+                  <div className="mt-3 flex items-end gap-2">
+                    <span className="stat-value text-7xl font-bold leading-none neon-text-cyan">
                       {speedMetrics.units === "pixels"
                         ? speedMetrics.top_speed_px_per_s
                         : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh)}
                     </span>
-                    <span className="text-xl text-[#64748b]">
+                    <span className="mb-1.5 text-xl text-[#6b7a99]">
                       {speedMetrics.units === "pixels" ? "px/s" : "km/h"}
                     </span>
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm text-[#64748b]">Distance covered</p>
-                  <div className="mt-2 flex items-end gap-2">
-                    <span className="text-5xl font-bold tabular-nums text-[#f1f5f9]">
+                  <p className="data-label">Distance covered</p>
+                  <div className="mt-3 flex items-end gap-2">
+                    <span className="stat-value text-7xl font-bold leading-none text-[#eef2ff]">
                       {speedMetrics.units === "pixels"
                         ? (speedMetrics.total_distance_px ?? speedMetrics.total_distance_m)
                         : (speedMetrics.distance_m ?? speedMetrics.total_distance_m)}
                     </span>
-                    <span className="text-xl text-[#64748b]">
+                    <span className="mb-1.5 text-xl text-[#6b7a99]">
                       {speedMetrics.units === "pixels" ? "px" : "m"}
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-[#64748b]">
+              <div className="mt-6 flex items-center justify-between border-t border-white/[0.06] pt-5">
+                <p className="text-sm font-medium text-[#6b7a99]">
                   {playerLabel}
                   {teamLabel ? ` · ${teamLabel}` : ""}
                 </p>
@@ -239,7 +228,7 @@ export default function ResultsPage() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <MetricCard
-                icon={<Activity size={18} />}
+                icon={<Activity size={16} />}
                 label="Average speed"
                 value={
                   speedMetrics.units === "pixels"
@@ -248,7 +237,7 @@ export default function ResultsPage() {
                 }
               />
               <MetricCard
-                icon={<Footprints size={18} />}
+                icon={<Footprints size={16} />}
                 label="Sprint distance"
                 value={
                   speedMetrics.units === "pixels"
@@ -257,29 +246,34 @@ export default function ResultsPage() {
                 }
               />
               <MetricCard
-                icon={<Zap size={18} />}
+                icon={<Zap size={16} />}
                 label="Sprints"
                 value={`${speedMetrics.sprint_count ?? 0}`}
               />
             </div>
           </div>
+
+        /* ── Shot metrics ─────────────────────────────────────── */
         ) : shotMetrics && analysisMode === "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
-          <div className="mt-2 space-y-5">
-            <div className="card p-6">
-              <p className="text-sm text-[#64748b]">Peak shot speed</p>
-              <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">{shotMetrics.peak_shot_speed_kmh}</span>
-                  <span className="ml-2 text-xl text-[#64748b]">km/h</span>
+          <div className="mt-2 space-y-4">
+            <div className="card relative overflow-hidden p-8">
+              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
+              <p className="data-label">Peak shot speed</p>
+              <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-end gap-2">
+                  <span className="stat-value text-7xl font-bold leading-none neon-text-cyan">
+                    {shotMetrics.peak_shot_speed_kmh}
+                  </span>
+                  <span className="mb-1.5 text-xl text-[#6b7a99]">km/h</span>
                 </div>
                 <ConfidenceDot score={confidenceScore} />
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <MetricCard icon={<Target size={18} />} label="Shots detected" value={`${shotMetrics.shot_count}`} />
+              <MetricCard icon={<Target size={16} />} label="Shots detected" value={`${shotMetrics.shot_count}`} />
               <MetricCard
-                icon={<Crosshair size={18} />}
+                icon={<Crosshair size={16} />}
                 label="Best shot"
                 value={
                   shotMetrics.best_shot
@@ -299,34 +293,40 @@ export default function ResultsPage() {
             )}
 
             <div className="card p-5">
-              <h2 className="mb-4 text-sm font-semibold text-[#f1f5f9]">All shots (by speed)</h2>
+              <h2 className="data-label mb-4">All shots — ranked by speed</h2>
               {sortedShots.length ? (
                 <div className="space-y-2">
                   {sortedShots.map((shot, index) => (
                     <div
                       key={`${shot.frame_id}-${index}`}
-                      className="flex items-center justify-between rounded-lg border border-[#ffffff14] bg-[#0a0a0f] px-4 py-3"
+                      className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-[#09090f] px-4 py-3"
                     >
                       <div>
-                        <p className="font-semibold text-[#f1f5f9]">#{index + 1} · Frame {shot.frame_id}</p>
-                        <p className="text-xs text-[#64748b]">{shot.timestamp_s.toFixed(2)}s</p>
+                        <p className="font-semibold text-[#eef2ff]">
+                          #{index + 1} · Frame {shot.frame_id}
+                        </p>
+                        <p className="text-xs text-[#6b7a99]">{shot.timestamp_s.toFixed(2)}s</p>
                       </div>
-                      <span className="text-lg font-bold tabular-nums text-[#3b82f6]">{shot.ball_speed_kmh} km/h</span>
+                      <span className="stat-value text-lg font-bold neon-text-cyan">
+                        {shot.ball_speed_kmh} km/h
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="rounded-lg border border-[#ffffff14] bg-[#0a0a0f] p-6 text-center text-sm text-[#64748b]">
-                  <p className="font-medium text-[#f1f5f9]">No shots detected</p>
+                <div className="rounded-xl border border-white/[0.06] bg-[#09090f] p-6 text-center text-sm text-[#6b7a99]">
+                  <p className="font-semibold text-[#eef2ff]">No shots detected</p>
                   <p className="mt-2">
-                    Check that you selected the correct player and that the clip includes visible shots with enough length.
+                    Check that you selected the correct player and that the clip includes visible
+                    shots with enough length.
                   </p>
                 </div>
               )}
             </div>
           </div>
+
         ) : result?.status === "failed" ? (
-          <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#64748b]">
+          <div className="card mt-6 grid min-h-48 place-items-center p-8 text-[#6b7a99]">
             Processing failed. Try re-uploading or selecting a clearer player frame.
           </div>
         ) : null}
@@ -340,8 +340,10 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-4 py-2 text-sm font-medium ${
-        active ? "bg-[#3b82f6] text-white" : "bg-[#ffffff08] text-[#64748b] hover:text-[#f1f5f9]"
+      className={`rounded-lg px-5 py-2 text-sm font-semibold transition-all ${
+        active
+          ? "bg-cyan-500/10 text-cyan-400 shadow-[inset_0_0_0_1px_rgba(6,182,212,0.3)]"
+          : "bg-white/[0.04] text-[#6b7a99] hover:text-[#eef2ff]"
       }`}
     >
       {label}
@@ -362,8 +364,9 @@ function HeatmapsPanel({
 }) {
   if (!movementUrl && !touchUrl) {
     return (
-      <div className="card grid min-h-48 place-items-center p-8 text-sm text-[#64748b]">
-        Heatmaps are not available for this analysis. Pitch calibration is required for field heatmaps.
+      <div className="card grid min-h-48 place-items-center p-8 text-sm text-[#6b7a99]">
+        Heatmaps are not available for this analysis. Pitch calibration is required for field
+        heatmaps.
       </div>
     );
   }
@@ -372,31 +375,41 @@ function HeatmapsPanel({
     <div className="space-y-4">
       {(touchCount !== undefined || passCount !== undefined) && (
         <div className="flex flex-wrap gap-2">
-          {touchCount !== undefined ? (
-            <span className="rounded-full bg-[#ffffff10] px-3 py-1 text-xs font-medium text-[#f1f5f9]">
+          {touchCount !== undefined && (
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.05] px-3 py-1 text-xs font-semibold text-[#eef2ff]">
               {touchCount} touches
             </span>
-          ) : null}
-          {passCount !== undefined ? (
-            <span className="rounded-full bg-[#3b82f6]/15 px-3 py-1 text-xs font-medium text-[#3b82f6]">
+          )}
+          {passCount !== undefined && (
+            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-400">
               {passCount} passes
             </span>
-          ) : null}
+          )}
         </div>
       )}
       <div className="grid gap-4 md:grid-cols-2">
-        {movementUrl ? (
+        {movementUrl && (
           <div className="card overflow-hidden p-3">
-            <p className="mb-2 text-sm text-[#64748b]">Movement heatmap (pitch)</p>
-            <img src={mediaUrl(movementUrl) ?? ""} alt="Movement heatmap" className="w-full rounded-lg" loading="lazy" />
+            <p className="data-label mb-3">Movement heatmap</p>
+            <img
+              src={mediaUrl(movementUrl) ?? ""}
+              alt="Movement heatmap"
+              className="w-full rounded-lg"
+              loading="lazy"
+            />
           </div>
-        ) : null}
-        {touchUrl ? (
+        )}
+        {touchUrl && (
           <div className="card overflow-hidden p-3">
-            <p className="mb-2 text-sm text-[#64748b]">Touch &amp; pass heatmap</p>
-            <img src={mediaUrl(touchUrl) ?? ""} alt="Touch heatmap" className="w-full rounded-lg" loading="lazy" />
+            <p className="data-label mb-3">Touch &amp; pass heatmap</p>
+            <img
+              src={mediaUrl(touchUrl) ?? ""}
+              alt="Touch heatmap"
+              className="w-full rounded-lg"
+              loading="lazy"
+            />
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -418,13 +431,15 @@ function TrackingResultWarnings({ metrics }: { metrics: Metrics }) {
     warnings.push("Tracking confidence is low. Results should be treated as estimates.");
   }
   if (tracked > 0 && predicted / tracked > 0.3) {
-    warnings.push("Significant portions of the track were predicted rather than directly observed.");
+    warnings.push(
+      "Significant portions of the track were predicted rather than directly observed.",
+    );
   }
 
   if (!warnings.length) return null;
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {warnings.map((warning) => (
         <p key={warning} className="text-sm text-amber-400">
           {warning}
@@ -436,12 +451,12 @@ function TrackingResultWarnings({ metrics }: { metrics: Metrics }) {
 
 function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 text-sm text-[#64748b]">
-        <span className="text-[#3b82f6]">{icon}</span>
+    <div className="card p-5">
+      <div className="data-label flex items-center gap-1.5">
+        <span className="text-cyan-500">{icon}</span>
         {label}
       </div>
-      <p className="mt-2 text-2xl font-semibold tabular-nums text-[#f1f5f9]">{value}</p>
+      <p className="stat-value mt-3 text-2xl text-[#eef2ff]">{value}</p>
     </div>
   );
 }

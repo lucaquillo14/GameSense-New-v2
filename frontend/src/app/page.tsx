@@ -14,7 +14,7 @@ import {
   readLocalVideoMeta,
   validateFileSize,
 } from "@/lib/uploadLimits";
-import { AlertCircle, ArrowRight, Film, Gauge, Loader2, Maximize2, Target, Timer, UploadCloud } from "lucide-react";
+import { AlertCircle, ArrowRight, Film, Loader2, Maximize2, Target, Timer, UploadCloud } from "lucide-react";
 import Link from "next/link";
 
 export default function UploadPage() {
@@ -79,31 +79,49 @@ export default function UploadPage() {
 
   return (
     <AppShell>
-      <section className="analytics-grid hero-glow mx-auto max-w-5xl px-5 py-16 fade-in">
-        <div className="mb-10 text-center">
-          <span className="chip mx-auto mb-5">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#a3e635]" />
+      <section className="analytics-grid hero-glow mx-auto max-w-4xl px-5 py-16 fade-in">
+
+        {/* ── Hero ────────────────────────────────────────────── */}
+        <div className="mb-12 text-center">
+          <div className="chip mx-auto mb-6 w-fit">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 glow-pulse" />
             AI sprint &amp; technique analysis
-          </span>
-          <h1 className="display text-5xl text-[#f8fafc] sm:text-6xl">
-            Measure your game in <span className="gradient-text">real numbers</span>
+          </div>
+          <h1 className="display text-5xl text-[#eef2ff] sm:text-[3.75rem]">
+            Measure your game
+            <br />
+            in <span className="gradient-text">real numbers</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-[#8b95a7]">
-            Drop a clip to track players and measure sprint speed, distance, and technique — then climb the leaderboard.
+          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-[#6b7a99]">
+            Drop a clip to track players and measure sprint speed, distance, and technique — then
+            climb the leaderboard.
           </p>
         </div>
 
+        {/* ── Upload card ──────────────────────────────────────── */}
         <div className="card p-6">
-          <label className="dropzone-hover group flex min-h-72 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#ffffff14] bg-[#0a0a0f] px-6 py-10 text-center transition-colors hover:bg-[#3b82f6]/5">
-            <span className="grid h-16 w-16 place-items-center rounded-xl bg-[#3b82f6] text-white shadow-[0_0_28px_rgba(59,130,246,0.35)]">
-              {checking ? <Loader2 size={30} className="animate-spin" /> : <UploadCloud size={30} />}
+          <label className="dropzone-hover group relative flex min-h-72 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-cyan-500/20 bg-cyan-500/[0.02] px-6 py-10 text-center transition-all duration-300 hover:bg-cyan-500/[0.04]">
+            {/* Corner brackets */}
+            <span className="absolute left-3 top-3 h-5 w-5 rounded-tl-sm border-l-2 border-t-2 border-cyan-500/40" />
+            <span className="absolute right-3 top-3 h-5 w-5 rounded-tr-sm border-r-2 border-t-2 border-cyan-500/40" />
+            <span className="absolute bottom-3 left-3 h-5 w-5 rounded-bl-sm border-b-2 border-l-2 border-cyan-500/40" />
+            <span className="absolute bottom-3 right-3 h-5 w-5 rounded-br-sm border-b-2 border-r-2 border-cyan-500/40" />
+
+            <span className="mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-[0_0_32px_rgba(6,182,212,0.45)]">
+              {checking ? (
+                <Loader2 size={28} className="animate-spin" />
+              ) : (
+                <UploadCloud size={28} />
+              )}
             </span>
-            <span className="mt-5 text-xl font-semibold text-[#f1f5f9]">
-              {checking ? "Checking video…" : file ? file.name : "Drag and drop your video here"}
+
+            <span className="font-display text-xl font-semibold text-[#eef2ff]">
+              {checking ? "Checking video…" : file ? file.name : "Drag & drop your video clip"}
             </span>
-            <span className="mt-2 text-sm text-[#64748b]">
+            <span className="mt-2 text-sm text-[#6b7a99]">
               MP4 or MOV · up to {MAX_UPLOAD_MB} MB · max {MAX_VIDEO_DURATION_S}s
             </span>
+
             <input
               type="file"
               accept="video/mp4,video/quicktime"
@@ -114,19 +132,26 @@ export default function UploadPage() {
 
           {localMeta && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <MetaPill icon={<Film size={14} />} label={`${localMeta.sizeMb} MB`} />
-              <MetaPill icon={<Timer size={14} />} label={formatDuration(localMeta.durationS)} />
-              <MetaPill icon={<Maximize2 size={14} />} label={`${localMeta.width}×${localMeta.height}`} />
+              <MetaPill icon={<Film size={13} />} label={`${localMeta.sizeMb} MB`} />
+              <MetaPill icon={<Timer size={13} />} label={formatDuration(localMeta.durationS)} />
+              <MetaPill
+                icon={<Maximize2 size={13} />}
+                label={`${localMeta.width}×${localMeta.height}`}
+              />
             </div>
           )}
 
           {previewUrl && (
-            <video src={previewUrl} className="mt-4 max-h-48 w-full rounded-lg border border-[#ffffff14] object-contain" muted />
+            <video
+              src={previewUrl}
+              className="mt-4 max-h-48 w-full rounded-xl border border-white/[0.07] object-contain"
+              muted
+            />
           )}
 
           {error && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              <AlertCircle size={16} />
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-300">
+              <AlertCircle size={16} className="shrink-0" />
               {error}
             </div>
           )}
@@ -135,25 +160,27 @@ export default function UploadPage() {
             type="button"
             onClick={submit}
             disabled={!file || !localMeta || busy || checking}
-            className="btn-primary mt-5 flex w-full items-center justify-center gap-2 px-4 py-3 disabled:cursor-not-allowed"
+            className="btn-primary mt-5 flex w-full items-center justify-center gap-2 px-4 py-3.5 text-sm disabled:cursor-not-allowed"
           >
             {busy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
             {busy ? "Uploading video…" : "Continue to player selection"}
           </button>
         </div>
 
-        <div className="mt-8 text-center">
+        {/* ── Secondary CTA ────────────────────────────────────── */}
+        <div className="mt-6 text-center">
           <Link
             href="/technique"
-            className="inline-flex items-center gap-2 rounded-xl border border-[#ffffff14] bg-[#111118] px-5 py-3 text-sm font-medium text-[#f1f5f9] transition-colors hover:border-[#3b82f6]/40 hover:bg-[#3b82f6]/10"
+            className="inline-flex items-center gap-2 rounded-xl border border-white/[0.07] bg-[#09090f] px-5 py-3 text-sm font-medium text-[#eef2ff] transition-all hover:border-cyan-500/25 hover:bg-cyan-500/5"
           >
-            <Target size={18} className="text-[#3b82f6]" />
+            <Target size={16} className="text-cyan-400" />
             Technique Analysis — upload a shooting clip
           </Link>
         </div>
 
-        <p className="mt-6 text-center text-xs text-[#64748b]">
-          FPS is detected after upload. Clips longer than {MAX_VIDEO_DURATION_S} seconds are rejected before upload.
+        <p className="mt-5 text-center text-xs text-[#3a4560]">
+          FPS is detected after upload. Clips longer than {MAX_VIDEO_DURATION_S} seconds are
+          rejected before upload.
         </p>
       </section>
     </AppShell>
@@ -162,7 +189,7 @@ export default function UploadPage() {
 
 function MetaPill({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1 text-xs text-[#f1f5f9]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-[#09090f] px-3 py-1 text-xs font-medium text-[#eef2ff]">
       {icon}
       {label}
     </span>
