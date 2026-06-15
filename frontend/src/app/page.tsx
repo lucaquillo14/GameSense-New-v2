@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { uploadVideo } from "@/lib/api";
+import { API_BASE, uploadVideo } from "@/lib/api";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? API_BASE;
 import {
   formatDuration,
   LocalVideoMeta,
@@ -12,7 +14,8 @@ import {
   readLocalVideoMeta,
   validateFileSize,
 } from "@/lib/uploadLimits";
-import { AlertCircle, ArrowRight, Film, Gauge, Loader2, Maximize2, Timer, UploadCloud } from "lucide-react";
+import { AlertCircle, ArrowRight, Film, Gauge, Loader2, Maximize2, Target, Timer, UploadCloud } from "lucide-react";
+import Link from "next/link";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -62,10 +65,13 @@ export default function UploadPage() {
     setBusy(true);
     setError(null);
     try {
+      console.info("Uploading to", API);
       const upload = await uploadVideo(file);
       router.push(`/setup/${upload.video_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed. Try another clip.");
+      const message = err instanceof Error ? err.message : "Upload failed. Try another clip.";
+      setError(message);
+      console.error("Upload failed:", err);
     } finally {
       setBusy(false);
     }
@@ -73,13 +79,17 @@ export default function UploadPage() {
 
   return (
     <AppShell>
-      <section className="analytics-grid mx-auto max-w-5xl px-5 py-12 fade-in">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-semibold tracking-tight text-[#f1f5f9] sm:text-5xl">
-            Upload match footage
+      <section className="analytics-grid hero-glow mx-auto max-w-5xl px-5 py-16 fade-in">
+        <div className="mb-10 text-center">
+          <span className="chip mx-auto mb-5">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#a3e635]" />
+            AI sprint &amp; technique analysis
+          </span>
+          <h1 className="display text-5xl text-[#f8fafc] sm:text-6xl">
+            Measure your game in <span className="gradient-text">real numbers</span>
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-[#64748b]">
-            Drop a clip to detect teams, track players, and measure speed or shot power.
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-[#8b95a7]">
+            Drop a clip to track players and measure sprint speed, distance, and technique — then climb the leaderboard.
           </p>
         </div>
 
@@ -130,6 +140,16 @@ export default function UploadPage() {
             {busy ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
             {busy ? "Uploading video…" : "Continue to player selection"}
           </button>
+        </div>
+
+        <div className="mt-8 text-center">
+          <Link
+            href="/technique"
+            className="inline-flex items-center gap-2 rounded-xl border border-[#ffffff14] bg-[#111118] px-5 py-3 text-sm font-medium text-[#f1f5f9] transition-colors hover:border-[#3b82f6]/40 hover:bg-[#3b82f6]/10"
+          >
+            <Target size={18} className="text-[#3b82f6]" />
+            Technique Analysis — upload a shooting clip
+          </Link>
         </div>
 
         <p className="mt-6 text-center text-xs text-[#64748b]">

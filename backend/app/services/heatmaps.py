@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from pathlib import Path
 
 import cv2
@@ -24,10 +25,16 @@ def generate_heatmaps(
     frame_height: int,
 ) -> dict[str, str]:
     if plt is None:
+        print("[GameSense] pixel heatmaps skipped: matplotlib unavailable")
         return {}
 
     urls: dict[str, str] = {}
     output_dir = video_dir(video_id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(
+        f"[GameSense] pixel heatmaps position_samples={len(position_samples)} "
+        f"speed_samples={len(speed_samples)}"
+    )
 
     if position_samples:
         xs = [item[0] for item in position_samples]
@@ -47,9 +54,14 @@ def generate_heatmaps(
         axis.set_title("Player position heatmap", color="#f1f5f9")
         axis.tick_params(colors="#64748b")
         position_path = output_dir / "position-heatmap.png"
-        fig.savefig(position_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-        plt.close(fig)
-        urls["position_heatmap"] = f"/media/{video_id}/position-heatmap.png"
+        print(f"[GameSense] writing position heatmap to {position_path.resolve()}")
+        try:
+            fig.savefig(position_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+            urls["position_heatmap"] = f"/media/{video_id}/position-heatmap.png"
+        except Exception:
+            traceback.print_exc()
+        finally:
+            plt.close(fig)
 
     if speed_samples:
         xs = [item[0] for item in speed_samples]
@@ -67,8 +79,13 @@ def generate_heatmaps(
         colorbar.set_label("km/h", color="#f1f5f9")
         colorbar.ax.yaxis.set_tick_params(color="#64748b")
         speed_path = output_dir / "speed-heatmap.png"
-        fig.savefig(speed_path, bbox_inches="tight", facecolor=fig.get_facecolor())
-        plt.close(fig)
-        urls["speed_heatmap"] = f"/media/{video_id}/speed-heatmap.png"
+        print(f"[GameSense] writing speed heatmap to {speed_path.resolve()}")
+        try:
+            fig.savefig(speed_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+            urls["speed_heatmap"] = f"/media/{video_id}/speed-heatmap.png"
+        except Exception:
+            traceback.print_exc()
+        finally:
+            plt.close(fig)
 
     return urls

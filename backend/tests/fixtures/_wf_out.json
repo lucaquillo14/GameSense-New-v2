@@ -1,0 +1,146 @@
+{
+  "technique_score": 4.5,
+  "feedback": [
+    "No player or ball detected in this frame. Use a side or 45 degree view with the kicker and ball clearly visible.",
+    "Ensure good lighting and minimal motion blur."
+  ],
+  "metrics": {
+    "knee_angle_deg": null,
+    "ankle_lock_deg": null,
+    "plant_foot_distance_player_heights": null,
+    "approach_angle_deg": null,
+    "hip_rotation_deg": null,
+    "trunk_lean_deg": null,
+    "follow_through_height_ratio": null,
+    "goal_width_px": null,
+    "goal_scale_note": "RF-DETR COCO detects person and sports ball, not soccer goal. Shot power is scaled from player height until a custom goal detector is added."
+  },
+  "shot_power_kmh": 0.0,
+  "phase": "approach",
+  "predictions": {
+    "image": {
+      "width": null,
+      "height": null
+    },
+    "predictions": []
+  },
+  "pose_predictions": {
+    "image": {
+      "width": 1920,
+      "height": 1080
+    },
+    "predictions": [
+      {
+        "width": 222.0,
+        "height": 561.0,
+        "x": 988.0,
+        "y": 605.5,
+        "confidence": 0.9201450347900391,
+        "class_id": 0,
+        "class": "person",
+        "detection_id": "f2103d64-0aa3-4381-9ccb-a7ed00e9e524",
+        "parent_id": "input_frame",
+        "keypoints": [
+          {
+            "class_id": 0,
+            "class": "nose",
+            "confidence": 0.5575206875801086,
+            "x": 970.0,
+            "y": 385.0
+          },
+          {
+            "class_id": 1,
+            "class": "left_eye",
+            "confidence": 0.6395846605300903,
+            "x": 971.0,
+            "y": 373.0
+          },
+          {
+            "class_id": 3,
+            "class": "left_ear",
+            "confidence": 0.9583326578140259,
+            "x": 988.0,
+            "y": 364.0
+          },
+          {
+            "class_id": 5,
+            "class": "left_shoulder",
+            "confidence": 0.9961346387863159,
+            "x": 1003.0,
+            "y": 404.0
+          },
+          {
+            "class_id": 6,
+            "class": "right_shoulder",
+            "confidence": 0.966187059879303,
+            "x": 1065.0,
+            "y": 417.0
+          },
+          {
+            "class_id": 7,
+            "class": "left_elbow",
+            "confidence": 0.9819148778915405,
+            "x": 997.0,
+            "y": 490.0
+          },
+          {
+            "class_id": 8,
+            "class": "right_elbow",
+            "confidence": 0.3624647855758667,
+            "x": 1082.0,
+            "y": 511.0
+          },
+          {
+            "class_id": 9,
+            "class": "left_wrist",
+            "confidence": 0.9685085415840149,
+            "x": 974.0,
+            "y": 583.0
+          },
+          {
+            "class_id": 11,
+            "class": "left_hip",
+            "confidence": 0.9964432120323181,
+            "x": 1010.0,
+            "y": 594.0
+          },
+          {
+            "class_id": 12,
+            "class": "right_hip",
+            "confidence": 0.9905477166175842,
+            "x": 1065.0,
+            "y": 602.0
+          },
+          {
+            "class_id": 13,
+            "class": "left_knee",
+            "confidence": 0.9947757720947266,
+            "x": 917.0,
+            "y": 685.0
+          },
+          {
+            "class_id": 14,
+            "class": "right_knee",
+            "confidence": 0.9900010824203491,
+            "x": 1024.0,
+            "y": 718.0
+          },
+          {
+            "class_id": 15,
+            "class": "left_ankle",
+            "confidence": 0.9902136921882629,
+            "x": 944.0,
+            "y": 830.0
+          },
+          {
+            "class_id": 16,
+            "class": "right_ankle",
+            "confidence": 0.9918423891067505,
+            "x": 1034.0,
+            "y": 855.0
+          }
+        ]
+      }
+    ]
+  }
+}

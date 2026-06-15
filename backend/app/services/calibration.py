@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -8,6 +9,9 @@ import numpy as np
 
 FIELD_LENGTH_M = 105.0
 FIELD_WIDTH_M = 68.0
+# FIFA full-size goal. Override via env for training goals of other sizes.
+GOAL_WIDTH_M = float(os.environ.get("GOAL_WIDTH_M", "") or 7.32)
+GOAL_HEIGHT_M = float(os.environ.get("GOAL_HEIGHT_M", "") or 2.44)
 PENALTY_BOX_WIDTH_M = 40.32
 PENALTY_BOX_DEPTH_M = 16.5
 CENTRE_CIRCLE_RADIUS_M = 9.15
@@ -293,15 +297,176 @@ def _homography_from_polygon(
     return matrix, region_polygon_px, warnings
 
 
+ASSUMED_PLAYER_HEIGHT_M = 1.75
+
+
+def _player_scale_calibration(
+    frame_width: int,
+    frame_height: int,
+    player_bboxes: list[tuple[float, float, float, float]],
+    warnings: list[str],
+    player_height_m: float | None = None,
+) -> CalibrationResult | None:
+    """Last-resort calibration: uniform metres-per-pixel from the median
+    detected player height. No perspective correction, so speeds and
+    distances are estimates — but far better than failing outright when no
+    pitch lines are visible and no polygon was drawn.
+
+    If the user supplied the tracked player's real height we use that instead
+    of the population assumption, turning a guess into a measurement."""
+    heights = [h for (_x, _y, _w, h) in player_bboxes if h > 20]
+    if len(heights) < 2:
+        return None
+    median_h_px = float(np.median(heights))
+    # Use the supplied height when it's physically plausible (1.0–2.5 m).
+    if player_height_m is not None and 1.0 <= player_height_m <= 2.5:
+        assumed_height_m = float(player_height_m)
+        warnings.append(
+            f"No pitch lines were found — scaling from your entered player height "
+            f"({assumed_height_m:.2f} m), without perspective correction. For best "
+            "accuracy, mark the goal frame or pitch on the setup screen."
+        )
+    else:
+        assumed_height_m = ASSUMED_PLAYER_HEIGHT_M
+        warnings.append(
+            "No pitch lines were found and no player height was entered — using an "
+            f"assumed height of {ASSUMED_PLAYER_HEIGHT_M:.2f} m (no perspective "
+            "correction). Speeds and distances are rough estimates; mark the goal "
+            "frame or pitch, or enter the player's height, for accurate values."
+        )
+    scale = assumed_height_m / median_h_px
+    matrix = np.array(
+        [[scale, 0.0, 0.0], [0.0, scale, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    return CalibrationResult(
+        matrix=matrix,
+        scale_known=True,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        units="metric",
+        region_polygon_px=None,
+        visible_field_bounds_m=visible_field_bounds_from_matrix(matrix, frame_width, frame_height),
+        warnings=warnings,
+        median_player_height_m=assumed_height_m,
+        auto_detected=True,
+        detection_method="player_height_scale",
+    )
+
+
+def _normalise_goal_posts(points: list[tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    """Classify 4 clicked goal-frame corners regardless of click order:
+    the two leftmost points form the left post, smaller y within a post is
+    the top."""
+    ordered = sorted(points, key=lambda p: p[0])
+    left = sorted(ordered[:2], key=lambda p: p[1])
+    right = sorted(ordered[2:], key=lambda p: p[1])
+    return {
+        "left_top": left[0],
+        "left_base": left[1],
+        "right_top": right[0],
+        "right_base": right[1],
+    }
+
+
+def goal_scale_calibration(
+    goal_posts: dict,
+    frame_width: int,
+    frame_height: int,
+    player_bboxes: list[tuple[float, float, float, float]] | None,
+    warnings: list[str],
+) -> CalibrationResult | None:
+    """Metres-per-pixel scale from the user-marked goal frame: posts are a
+    known real size (7.32 m wide x 2.44 m high), giving a true visible scale
+    even when only a fraction of the pitch is in frame. Vertical post height
+    is viewpoint-robust; goal width foreshortens when the camera views the
+    goal at an angle, so when the two disagree the post height wins."""
+    raw_points = goal_posts.get("points") or []
+    if len(raw_points) != 4:
+        return None
+    try:
+        corners = _normalise_goal_posts(
+            [(float(p["x"]), float(p["y"])) for p in raw_points]
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    def dist(a: tuple[float, float], b: tuple[float, float]) -> float:
+        return float(np.hypot(b[0] - a[0], b[1] - a[1]))
+
+    width_px = (dist(corners["left_base"], corners["right_base"])
+                + dist(corners["left_top"], corners["right_top"])) / 2.0
+    height_px = (dist(corners["left_base"], corners["left_top"])
+                 + dist(corners["right_base"], corners["right_top"])) / 2.0
+    if width_px < 20.0 or height_px < 10.0:
+        warnings.append(
+            "Goal post markers are too close together to compute a reliable scale — "
+            "re-mark the four corners of the goal frame."
+        )
+        return None
+
+    scale_w = GOAL_WIDTH_M / width_px
+    scale_h = GOAL_HEIGHT_M / height_px
+    if abs(scale_w - scale_h) / max(scale_w, scale_h) <= 0.25:
+        scale = (scale_w + scale_h) / 2.0
+    else:
+        scale = scale_h
+        warnings.append(
+            "Goal width and height give different scales (the camera views the goal "
+            "at an angle) — using the post height for the scale."
+        )
+
+    matrix = np.array(
+        [[scale, 0.0, 0.0], [0.0, scale, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    _valid, median_height, height_error = validate_calibration_scale(matrix, player_bboxes or [])
+    if height_error:
+        # The goal scale is what the user explicitly asked for — keep it, but
+        # surface the sanity check so a mis-marked goal is visible.
+        warnings.append(height_error.replace("Please re-mark the pitch polygon.",
+                                             "Check the goal post markers."))
+    warnings.append(
+        f"Scale calibrated from the goal frame ({GOAL_WIDTH_M:.2f} m x {GOAL_HEIGHT_M:.2f} m). "
+        "Speeds and distances use this visible reference."
+    )
+    return CalibrationResult(
+        matrix=matrix,
+        scale_known=True,
+        frame_width=frame_width,
+        frame_height=frame_height,
+        units="metric",
+        region_polygon_px=None,
+        visible_field_bounds_m=visible_field_bounds_from_matrix(matrix, frame_width, frame_height),
+        warnings=warnings,
+        median_player_height_m=median_height,
+        auto_detected=False,
+        detection_method="goal_posts",
+    )
+
+
 def compute_calibration(
     polygon: list[dict] | None,
     frame_width: int,
     frame_height: int,
     calibration_frame: np.ndarray | None = None,
     player_bboxes: list[tuple[float, float, float, float]] | None = None,
+    goal_posts: dict | None = None,
+    player_height_m: float | None = None,
 ) -> CalibrationResult:
     warnings: list[str] = []
     errors: list[str] = []
+
+    # User-marked goal posts are the most trustworthy scale reference for
+    # partial-pitch / moving-camera footage — they take priority over the
+    # pitch polygon (which assumes the polygon spans the FULL pitch and badly
+    # inflates speeds when only part of the pitch is visible).
+    if goal_posts:
+        result = goal_scale_calibration(
+            goal_posts, frame_width, frame_height, player_bboxes, warnings
+        )
+        if result is not None:
+            return result
 
     if polygon:
         matrix, region_polygon_px, polygon_warnings = _homography_from_polygon(polygon, frame_width, frame_height)
@@ -359,6 +524,14 @@ def compute_calibration(
                 region_polygon_px = [(float(x), float(y)) for x, y in quad.tolist()]
                 valid, median_height, height_error = validate_calibration_scale(matrix, player_bboxes or [])
                 if not valid and height_error:
+                    # Auto-detected markings gave a bad scale — fall back to
+                    # player-height scaling rather than failing the analysis.
+                    warnings.append(height_error)
+                    fallback = _player_scale_calibration(
+                        frame_width, frame_height, player_bboxes or [], warnings, player_height_m
+                    )
+                    if fallback is not None:
+                        return fallback
                     return CalibrationResult(
                         matrix=None,
                         scale_known=False,
@@ -389,6 +562,14 @@ def compute_calibration(
                     detection_method=method,
                 )
 
+    # No polygon, and auto-detection found nothing usable: try the
+    # player-height fallback before giving up entirely.
+    fallback = _player_scale_calibration(
+        frame_width, frame_height, player_bboxes or [], warnings, player_height_m
+    )
+    if fallback is not None:
+        return fallback
+
     warnings.append(
         "No pitch calibration is available. Positions and speeds are reported in pixels until you mark the pitch polygon."
     )
@@ -401,6 +582,13 @@ def compute_calibration(
         warnings=warnings,
         errors=errors,
     )
+
+
+def region_polygon_for_metrics(calibration: CalibrationResult) -> list[tuple[float, float]] | None:
+    """Auto-detected markings cover a small quad; use the full frame for metric calibration."""
+    if calibration.auto_detected:
+        return None
+    return calibration.region_polygon_px
 
 
 def build_track_point(
@@ -419,7 +607,7 @@ def build_track_point(
         in_region = is_pixel_in_calibrated_region(
             foot_px[0],
             foot_px[1],
-            calibration.region_polygon_px,
+            region_polygon_for_metrics(calibration),
             calibration.frame_width,
             calibration.frame_height,
         )

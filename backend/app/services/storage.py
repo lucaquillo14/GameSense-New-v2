@@ -1,13 +1,38 @@
 import json
 import os
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import cv2
 from fastapi import UploadFile
 
 ROOT = Path(__file__).resolve().parents[3]
-MEDIA_ROOT = ROOT / "storage"
+# OneDrive/Dropbox sync clients lock files mid-sync and cause intermittent
+# [Errno 13] errors when the project lives in a synced folder. Set
+# GAMESENSE_MEDIA_ROOT in backend/.env to move storage somewhere unsynced,
+# e.g. GAMESENSE_MEDIA_ROOT=C:\GameSenseStorage
+_env_root = os.environ.get("GAMESENSE_MEDIA_ROOT", "").strip()
+MEDIA_ROOT = Path(_env_root) if _env_root else (ROOT / "storage")
+_record_write_lock = threading.Lock()
+
+_LOCK_RETRIES = 40            # ~10 s total — OneDrive sync locks can last seconds
+_LOCK_BACKOFF_S = 0.25
+
+
+def _retry_locked(operation, *, retries: int = _LOCK_RETRIES):
+    """Run a filesystem operation, riding out transient sync-client locks."""
+    last_exc: PermissionError | None = None
+    for attempt in range(retries):
+        try:
+            return operation()
+        except PermissionError as exc:
+            last_exc = exc
+            time.sleep(min(_LOCK_BACKOFF_S * (attempt + 1), 1.0))
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("retry_locked: no operation result")
 
 
 def video_dir(video_id: str) -> Path:
@@ -73,26 +98,40 @@ def get_video_record(video_id: str) -> dict | None:
     path = record_path(video_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _retry_locked(lambda: json.loads(path.read_text(encoding="utf-8")))
 
 
 def update_video_record(video_id: str, record: dict) -> None:
     path = record_path(video_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix="record-", suffix=".json", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
-            temp_file.write(json.dumps(record, indent=2))
-        os.replace(temp_name, path)
-    finally:
-        if os.path.exists(temp_name):
-            os.unlink(temp_name)
+    payload = json.dumps(record, indent=2)
+
+    with _record_write_lock:
+        fd, temp_name = tempfile.mkstemp(prefix="record-", suffix=".json", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                temp_file.write(payload)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+
+            try:
+                _retry_locked(lambda: os.replace(temp_name, path))
+            except PermissionError:
+                # Final fallback: direct write (also retried).
+                _retry_locked(lambda: path.write_text(payload, encoding="utf-8"))
+        finally:
+            if os.path.exists(temp_name):
+                try:
+                    os.unlink(temp_name)
+                except OSError:
+                    pass
 
 
 def write_json(video_id: str, filename: str, payload: dict, *, compact: bool = False) -> str:
     path = video_dir(video_id) / filename
     if compact:
-        path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        text = json.dumps(payload, separators=(",", ":"))
     else:
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        text = json.dumps(payload, indent=2)
+    _retry_locked(lambda: path.write_text(text, encoding="utf-8"))
     return f"/media/{video_id}/{filename}"

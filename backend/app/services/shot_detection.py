@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from math import hypot
 
 import numpy as np
@@ -10,7 +11,20 @@ from app.services.metrics import BallTrackPoint, TrackPoint
 SHOT_SPEED_THRESHOLD_KMH = 50.0
 ROLLING_SPEED_THRESHOLD_KMH = 10.0
 CONTACT_RADIUS_PX = 80.0
+CONTACT_RADIUS_M = 1.5
 MIN_FLIGHT_FRAMES = 3
+MAX_MERGE_FRAMES = 8
+PASS_SPEED_KMH = 15.0
+
+
+@dataclass
+class FieldTouchEvent:
+    frame_id: int
+    time_s: float
+    contact_x_m: float
+    contact_y_m: float
+    ball_speed_kmh: float
+    is_pass: bool = False
 
 
 def _ball_speed_kmh(
@@ -132,3 +146,103 @@ def detect_shots(
         used_peaks.add(peak_frame_id)
 
     return confirmed
+
+
+def detect_touches_and_passes(
+    player_points: list[TrackPoint],
+    ball_points: list[BallTrackPoint],
+    source_fps: float,
+) -> tuple[list[FieldTouchEvent], int, int]:
+    if len(ball_points) < 4 or len(player_points) < 2:
+        return [], 0, 0
+
+    ball_map = {point.frame_id: point for point in ball_points}
+    player_map = {point.frame_id: point for point in player_points}
+    ordered_ball = sorted(ball_points, key=lambda point: point.frame_id)
+
+    ball_speeds: dict[int, float] = {}
+    for previous, current in zip(ordered_ball, ordered_ball[1:]):
+        if not previous.calibrated or not current.calibrated:
+            continue
+        dt = max(current.time_s - previous.time_s, 1e-6)
+        distance_m = hypot(float(current.x_m) - float(previous.x_m), float(current.y_m) - float(previous.y_m))
+        ball_speeds[current.frame_id] = distance_m / dt * 3.6
+
+    raw_touch_frames: list[int] = []
+    for ball_point in ordered_ball:
+        if not ball_point.calibrated:
+            continue
+        player_point = _nearest_player_point(player_map, ball_point.frame_id)
+        if player_point is None or not player_point.calibrated:
+            continue
+        foot_x = float(player_point.x_m if player_point.x_m is not None else player_point.x_px)
+        foot_y = float(player_point.y_m if player_point.y_m is not None else player_point.y_px)
+        if hypot(float(ball_point.x_m) - foot_x, float(ball_point.y_m) - foot_y) <= CONTACT_RADIUS_M:
+            raw_touch_frames.append(ball_point.frame_id)
+
+    touch_groups: list[list[int]] = []
+    for frame_id in raw_touch_frames:
+        if touch_groups and frame_id - touch_groups[-1][-1] <= MAX_MERGE_FRAMES:
+            touch_groups[-1].append(frame_id)
+        else:
+            touch_groups.append([frame_id])
+
+    touch_count = len(touch_groups)
+    pass_count = 0
+    events: list[FieldTouchEvent] = []
+
+    for group in touch_groups:
+        contact_frame = group[0]
+        after_frames = [
+            frame_id
+            for frame_id in sorted(ball_speeds.keys())
+            if contact_frame < frame_id <= contact_frame + 20
+        ]
+        if not after_frames:
+            continue
+
+        peak_speed = max(ball_speeds.get(frame_id, 0.0) for frame_id in after_frames)
+        sustained = sum(1 for frame_id in after_frames if ball_speeds.get(frame_id, 0.0) > SHOT_SPEED_THRESHOLD_KMH)
+        is_pass = peak_speed >= PASS_SPEED_KMH
+        if is_pass:
+            pass_count += 1
+
+        ball_point = ball_map.get(contact_frame) or _nearest_ball_point(ball_map, contact_frame)
+        if ball_point is None or not ball_point.calibrated:
+            continue
+
+        if peak_speed >= SHOT_SPEED_THRESHOLD_KMH and sustained >= MIN_FLIGHT_FRAMES:
+            events.append(
+                FieldTouchEvent(
+                    frame_id=contact_frame,
+                    time_s=contact_frame / max(source_fps, 1e-6),
+                    contact_x_m=float(ball_point.x_m),
+                    contact_y_m=float(ball_point.y_m),
+                    ball_speed_kmh=round(peak_speed, 2),
+                    is_pass=is_pass,
+                )
+            )
+
+    return events, touch_count, pass_count
+
+
+def _nearest_player_point(player_map: dict[int, TrackPoint], frame_id: int, max_gap: int = 4) -> TrackPoint | None:
+    if frame_id in player_map:
+        return player_map[frame_id]
+    for offset in range(1, max_gap + 1):
+        if frame_id - offset in player_map:
+            return player_map[frame_id - offset]
+        if frame_id + offset in player_map:
+            return player_map[frame_id + offset]
+    return None
+
+
+def _nearest_ball_point(ball_map: dict[int, BallTrackPoint], frame_id: int, max_gap: int = 4) -> BallTrackPoint | None:
+    if frame_id in ball_map:
+        return ball_map[frame_id]
+    for offset in range(1, max_gap + 1):
+        if frame_id - offset in ball_map:
+            return ball_map[frame_id - offset]
+        if frame_id + offset in ball_map:
+            return ball_map[frame_id + offset]
+    return None

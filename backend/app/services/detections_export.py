@@ -3,9 +3,47 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from app.services.player_identity import PlayerIdentityManager
+from app.services.robust_player_tracker import YOLO_CADENCE
 from app.services.team_classification import TeamTemplates, team_label
-from app.services.video_streaming import ANALYSIS_SAMPLE_FPS, compute_frame_interval, iter_sampled_frames
+from app.services.video_streaming import ANALYSIS_SAMPLE_FPS, compute_frame_interval, iter_all_frames
+
+
+def _interpolate_bbox(start_bbox: list[float], end_bbox: list[float], ratio: float) -> list[float]:
+    return [
+        round(start_bbox[0] + (end_bbox[0] - start_bbox[0]) * ratio, 4),
+        round(start_bbox[1] + (end_bbox[1] - start_bbox[1]) * ratio, 4),
+        round(start_bbox[2] + (end_bbox[2] - start_bbox[2]) * ratio, 4),
+        round(start_bbox[3] + (end_bbox[3] - start_bbox[3]) * ratio, 4),
+    ]
+
+
+def _interpolate_overlay_frames(key_frames: dict[int, list[dict]]) -> dict[str, list[dict]]:
+    frames: dict[str, list[dict]] = {str(frame_id): entries for frame_id, entries in key_frames.items()}
+    ordered = sorted(key_frames.keys())
+    for start_frame, end_frame in zip(ordered, ordered[1:]):
+        gap = end_frame - start_frame
+        if gap <= 1:
+            continue
+        start_by_id = {entry["id"]: entry for entry in key_frames[start_frame]}
+        end_by_id = {entry["id"]: entry for entry in key_frames[end_frame]}
+        for frame_id in range(start_frame + 1, end_frame):
+            ratio = (frame_id - start_frame) / gap
+            interpolated_entries: list[dict] = []
+            for player_id in set(start_by_id).intersection(end_by_id):
+                start_entry = start_by_id[player_id]
+                end_entry = end_by_id[player_id]
+                interpolated_entries.append({
+                    "id": player_id,
+                    "team": start_entry["team"],
+                    "c": round(min(start_entry["c"], end_entry["c"]) * 0.9, 4),
+                    "b": _interpolate_bbox(start_entry["b"], end_entry["b"], ratio),
+                    "color": start_entry["color"],
+                    "interpolated": True,
+                    "is_target": start_entry.get("is_target", False),
+                })
+            if interpolated_entries:
+                frames[str(frame_id)] = interpolated_entries
+    return frames
 
 
 def collect_overlay_detections(
@@ -17,6 +55,8 @@ def collect_overlay_detections(
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict:
     source_fps = float(metadata.get("fps") or 30.0)
+    if source_fps <= 0:
+        source_fps = 30.0
     frame_count = int(metadata.get("frame_count") or 0)
     frame_width = int(metadata.get("width") or 0)
     frame_height = int(metadata.get("height") or 0)
@@ -25,75 +65,66 @@ def collect_overlay_detections(
 
     frame_interval = compute_frame_interval(source_fps, ANALYSIS_SAMPLE_FPS)
     pipeline.team_service.set_templates(team_templates)
-    identity_manager = PlayerIdentityManager(team_templates)
+    tracker = pipeline.create_player_tracker(source_fps)
     target_id = (target_player or {}).get("player_id")
 
-    frames: dict[str, list[dict]] = {}
-    sampled = 0
-    for frame_id, _fps, frame, _interval, _frame_count in iter_sampled_frames(video_path):
-        resized, scale = (frame, 1.0) if frame.shape[1] <= pipeline.max_width else pipeline._resize(frame)
-        entries: list[dict] = []
-        player_index = 0
-        stream_to_source_x = frame_width / max(frame.shape[1], 1)
-        stream_to_source_y = frame_height / max(frame.shape[0], 1)
-        for x, y, w, h, confidence in pipeline._detect_people(resized):
-            stream_bbox = pipeline._unscale_bbox((x, y, w, h), scale)
-            original = {
-                "x": stream_bbox["x"] * stream_to_source_x,
-                "y": stream_bbox["y"] * stream_to_source_y,
-                "width": stream_bbox["width"] * stream_to_source_x,
-                "height": stream_bbox["height"] * stream_to_source_y,
-            }
-            bbox_dict = {
-                "x": original["x"],
-                "y": original["y"],
-                "width": original["width"],
-                "height": original["height"],
-            }
-            bbox_tuple = (
-                float(original["x"]),
-                float(original["y"]),
-                float(original["width"]),
-                float(original["height"]),
-            )
-            player_key = f"export-{frame_id}-{player_index}"
-            team_id, color_rgb = pipeline._classify_player_detection(
-                frame,
-                bbox_dict,
-                player_key,
-                team_templates,
-                apply_temporal=False,
-            )
-            player_index += 1
-            if team_id not in {"team_a", "team_b"}:
-                continue
+    key_frames: dict[int, list[dict]] = {}
+    processed = 0
+    for frame_id, fps, frame, total_frames in iter_all_frames(video_path):
+        if frame_id % YOLO_CADENCE != 0:
+            continue
 
-            stable_id = identity_manager.assign_identity(
-                frame,
-                bbox_tuple,
-                frame_id,
-                frame_id / max(source_fps, 1e-6),
-                team=team_id,
-            )
-            entry = {
-                "id": stable_id or player_key,
-                "team": team_label(team_id),  # type: ignore[arg-type]
-                "c": round(float(confidence), 4),
-                "b": [
-                    round(float(original["x"]) / frame_width, 4),
-                    round(float(original["y"]) / frame_height, 4),
-                    round(float(original["width"]) / frame_width, 4),
-                    round(float(original["height"]) / frame_height, 4),
-                ],
-                "color": {"r": color_rgb[0], "g": color_rgb[1], "b": color_rgb[2]},
-            }
-            entries.append(entry)
+        tracked = pipeline.track_players(frame, tracker)
+        entries: list[dict] = []
+        if tracked.tracker_id is not None:
+            player_boxes = pipeline.tracked_to_tuples(tracked)
+            for index, track_id in enumerate(tracked.tracker_id):
+                if index >= len(player_boxes):
+                    continue
+                x, y, w, h, confidence = player_boxes[index]
+                bbox_dict = {
+                    "x": float(x),
+                    "y": float(y),
+                    "width": float(w),
+                    "height": float(h),
+                }
+                player_key = f"track-{int(track_id)}"
+                team_id, color_rgb = pipeline._classify_player_detection(
+                    frame,
+                    bbox_dict,
+                    player_key,
+                    team_templates,
+                    apply_temporal=False,
+                )
+                if team_id not in {"team_a", "team_b"}:
+                    continue
+                entries.append({
+                    "id": player_key,
+                    "team": team_label(team_id),  # type: ignore[arg-type]
+                    "c": round(float(confidence), 4),
+                    "b": [
+                        round(float(x) / frame_width, 4),
+                        round(float(y) / frame_height, 4),
+                        round(float(w) / frame_width, 4),
+                        round(float(h) / frame_height, 4),
+                    ],
+                    "color": {"r": color_rgb[0], "g": color_rgb[1], "b": color_rgb[2]},
+                    "interpolated": False,
+                })
 
         if entries:
-            frames[str(frame_id)] = entries
-        sampled += 1
-        if progress_callback and sampled % 20 == 0:
-            progress_callback(frame_id, frame_count)
+            key_frames[frame_id] = entries
+        processed += 1
+        if progress_callback and processed % 20 == 0:
+            progress_callback(frame_id, total_frames)
+
+    frames = _interpolate_overlay_frames(key_frames)
+    populated = len(frames)
+    coverage = populated / max(frame_count, 1)
+    print(
+        f"[GameSense] overlay JSON frames={populated} "
+        f"coverage={coverage:.1%} keyframes={len(key_frames)}"
+    )
     return {
         "fps": round(source_fps, 4),
         "interval": frame_interval,

@@ -1,0 +1,31 @@
+{
+  "technique_score": 6.2,
+  "shot_power_kmh": 42.5,
+  "phase": "approach",
+  "feedback": [
+    "Plant foot spacing looks close enough to the ball for a stable strike.",
+    "Knee extension is in a usable striking range."
+  ],
+  "metrics": {
+    "knee_angle_deg": 148.2,
+    "ankle_lock_deg": 112.0,
+    "plant_foot_distance_player_heights": 0.12,
+    "approach_angle_deg": 18.5,
+    "hip_rotation_deg": 22.0,
+    "trunk_lean_deg": 14.0,
+    "follow_through_height_ratio": 0.08,
+    "goal_scale_note": "RF-DETR COCO detects person and sports ball, not soccer goal."
+  },
+  "predictions": {
+    "class_name": ["person", "sports ball"],
+    "confidence": [0.91, 0.84],
+    "xyxy": [[120.0, 80.0, 260.0, 420.0], [300.0, 360.0, 330.0, 390.0]]
+  },
+  "pose_predictions": {
+    "keypoints_xy": [[[0, 0]]]
+  },
+  "output_image": {
+    "type": "base64",
+    "value": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxISEhUQEhIVFhUVFRUVFRUVFRUWFxUXFhUYHSggGBolGxUVITEhJSkrLi4uFx8zODMtNygtLisBCgoKDg0OGxAQGy0lICUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAXAAADAQAAAAAAAAAAAAAAAAAAAQID/8QAFhEBAQEAAAAAAAAAAAAAAAAAAAER/9oADAMBAAIQAxAAAAGoH//EABYQAAMAAAAAAAAAAAAAAAAAAAABEf/aAAgBAQABBQL/AM//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAXEAADAQAAAAAAAAAAAAAAAAAAAREx/9oACAEBAAY/Ap//xAAZEAACAwEAAAAAAAAAAAAAAAAAEQEQIWH/2gAIAQEAAT8h0sP/2Q=="
+  }
+}

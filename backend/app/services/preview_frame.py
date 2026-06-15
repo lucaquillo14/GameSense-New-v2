@@ -7,8 +7,8 @@ import numpy as np
 
 from app.services.storage import video_dir
 
-PREVIEW_MAX_WIDTH = 640
-PREVIEW_JPEG_QUALITY = 72
+PREVIEW_MAX_WIDTH = 1280
+PREVIEW_JPEG_QUALITY = 88
 
 
 def save_preview_frame(

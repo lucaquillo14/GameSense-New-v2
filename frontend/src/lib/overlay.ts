@@ -4,6 +4,7 @@ export type OverlayDetection = {
   c: number;
   b: [number, number, number, number];
   color?: { r: number; g: number; b: number };
+  is_target?: boolean;
 };
 
 export type DetectionsOverlay = {
@@ -109,6 +110,7 @@ export function drawOverlayDetections(
   video: HTMLVideoElement,
   detections: OverlayDetection[] | null,
   targetId?: string | null,
+  targetSpeedKmh?: number | null,
 ) {
   const context = canvas.getContext("2d");
   if (!context) return;
@@ -126,26 +128,57 @@ export function drawOverlayDetections(
   if (!detections?.length) return;
 
   const rect = getVideoRenderRect(video);
-  for (const detection of detections) {
-    const [nx, ny, nw, nh] = detection.b;
-    const x = rect.offsetX + nx * rect.width;
-    const y = rect.offsetY + ny * rect.height;
-    const width = nw * rect.width;
-    const height = nh * rect.height;
-    const isTarget = Boolean(targetId && detection.id === targetId);
-    const color = isTarget ? "#3b82f6" : teamColorCss(detection.color);
+  const TARGET_COLOR = "#a3e635"; // bright lime — stands out from team colours
 
-    context.lineWidth = isTarget ? 3 : 2;
-    context.strokeStyle = color;
+  const isTargetDetection = (d: OverlayDetection) =>
+    d.is_target === true || Boolean(targetId && d.id === targetId);
+
+  const toRect = (d: OverlayDetection) => {
+    const [nx, ny, nw, nh] = d.b;
+    return {
+      x: rect.offsetX + nx * rect.width,
+      y: rect.offsetY + ny * rect.height,
+      width: nw * rect.width,
+      height: nh * rect.height,
+    };
+  };
+
+  // Pass 1: other players, dimmed, so the tracked player pops.
+  for (const detection of detections) {
+    if (isTargetDetection(detection)) continue;
+    const { x, y, width, height } = toRect(detection);
+    context.globalAlpha = 0.55;
+    context.lineWidth = 2;
+    context.strokeStyle = teamColorCss(detection.color);
+    context.strokeRect(x, y, width, height);
+  }
+  context.globalAlpha = 1;
+
+  // Pass 2: the tracked player, drawn on top with a bold highlight.
+  for (const detection of detections) {
+    if (!isTargetDetection(detection)) continue;
+    const { x, y, width, height } = toRect(detection);
+
+    // Dark backing stroke for contrast on any background.
+    context.lineWidth = 6;
+    context.strokeStyle = "rgba(0,0,0,0.6)";
+    context.strokeRect(x - 1, y - 1, width + 2, height + 2);
+    // Bright target stroke.
+    context.lineWidth = 4;
+    context.strokeStyle = TARGET_COLOR;
     context.strokeRect(x, y, width, height);
 
-    const label = detection.id || detection.team;
-    context.font = "bold 11px Inter, system-ui, sans-serif";
-    const textWidth = context.measureText(label).width + 8;
-    const labelHeight = 16;
-    context.fillStyle = color;
-    context.fillRect(x, Math.max(y - labelHeight, 0), textWidth, labelHeight);
-    context.fillStyle = "#ffffff";
-    context.fillText(label, x + 4, Math.max(y - 4, 12));
+    // "TRACKED" pill label, with live speed when available.
+    const speedText =
+      targetSpeedKmh != null && targetSpeedKmh > 0 ? ` · ${targetSpeedKmh.toFixed(1)} km/h` : "";
+    const label = `TRACKED${speedText}`;
+    context.font = "bold 12px Inter, system-ui, sans-serif";
+    const textWidth = context.measureText(label).width + 12;
+    const labelHeight = 18;
+    const labelY = y - labelHeight >= 0 ? y - labelHeight : y;
+    context.fillStyle = TARGET_COLOR;
+    context.fillRect(x - 2, labelY, textWidth, labelHeight);
+    context.fillStyle = "#0a0a0f";
+    context.fillText(label, x + 4, labelY + 13);
   }
 }

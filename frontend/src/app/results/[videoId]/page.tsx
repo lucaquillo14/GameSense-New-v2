@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProcessingPreview } from "@/components/ProcessingPreview";
 import { ProcessingProgress } from "@/components/ProcessingProgress";
-import { ConfidenceDot, SpeedChart } from "@/components/SpeedChart";
+import { ConfidenceDot } from "@/components/SpeedChart";
 import { WarningBanners } from "@/components/WarningBanners";
 import { VideoPlaybackOverlay } from "@/components/VideoPlaybackOverlay";
 import { getDetectionsOverlay, getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
 import type { DetectionsOverlay } from "@/lib/overlay";
-import { Activity, Crosshair, Loader2, Route, Target, Trophy, Zap } from "lucide-react";
+import { Activity, Crosshair, Footprints, Loader2, Route, Target, Trophy, Zap } from "lucide-react";
 import { useParams } from "next/navigation";
 
 type ResultsTab = "overview" | "heatmaps" | "playback";
@@ -160,9 +160,7 @@ export default function ResultsPage() {
         {result?.status === "complete" && (
           <div className="mb-6 flex flex-wrap gap-2">
             <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")} label="Overview" />
-            {analysisMode !== "max_shot_power" && (
-              <TabButton active={activeTab === "heatmaps"} onClick={() => setActiveTab("heatmaps")} label="Heatmaps" />
-            )}
+            <TabButton active={activeTab === "heatmaps"} onClick={() => setActiveTab("heatmaps")} label="Heatmaps" />
             <TabButton active={activeTab === "playback"} onClick={() => setActiveTab("playback")} label="Playback" />
           </div>
         )}
@@ -182,15 +180,18 @@ export default function ResultsPage() {
                 durationS={result.video_metadata.duration_s}
                 overlay={overlay}
                 targetPlayerId={(result.target_player as { player_id?: string } | null)?.player_id ?? overlay?.target_id}
+                speedSeries={speedMetrics?.speed_series}
               />
             )}
           </div>
         ) : null}
 
-        {result?.status === "complete" && activeTab === "heatmaps" && speedMetrics ? (
+        {result?.status === "complete" && activeTab === "heatmaps" ? (
           <HeatmapsPanel
-            positionUrl={result.assets?.position_heatmap}
-            speedUrl={result.assets?.speed_heatmap}
+            movementUrl={result.assets?.movement_heatmap}
+            touchUrl={result.assets?.touch_heatmap}
+            touchCount={results?.touch_count}
+            passCount={results?.pass_count}
           />
         ) : null}
 
@@ -199,27 +200,44 @@ export default function ResultsPage() {
             <TrackingResultWarnings metrics={speedMetrics} />
 
             <div className="card p-6">
-              <p className="text-sm text-[#64748b]">Top speed</p>
-              <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+              <div className="grid gap-6 sm:grid-cols-2">
                 <div>
-                  <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">
-                    {speedMetrics.units === "pixels"
-                      ? speedMetrics.top_speed_px_per_s
-                      : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh)}
-                  </span>
-                  <span className="ml-2 text-xl text-[#64748b]">
-                    {speedMetrics.units === "pixels" ? "px/s" : "km/h"}
-                  </span>
+                  <p className="text-sm text-[#64748b]">Top speed</p>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span className="text-5xl font-bold tabular-nums text-[#3b82f6]">
+                      {speedMetrics.units === "pixels"
+                        ? speedMetrics.top_speed_px_per_s
+                        : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh)}
+                    </span>
+                    <span className="text-xl text-[#64748b]">
+                      {speedMetrics.units === "pixels" ? "px/s" : "km/h"}
+                    </span>
+                  </div>
                 </div>
+                <div>
+                  <p className="text-sm text-[#64748b]">Distance covered</p>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span className="text-5xl font-bold tabular-nums text-[#f1f5f9]">
+                      {speedMetrics.units === "pixels"
+                        ? (speedMetrics.total_distance_px ?? speedMetrics.total_distance_m)
+                        : (speedMetrics.distance_m ?? speedMetrics.total_distance_m)}
+                    </span>
+                    <span className="text-xl text-[#64748b]">
+                      {speedMetrics.units === "pixels" ? "px" : "m"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm text-[#64748b]">
+                  {playerLabel}
+                  {teamLabel ? ` · ${teamLabel}` : ""}
+                </p>
                 <ConfidenceDot score={confidenceScore} />
               </div>
-              <p className="mt-2 text-sm text-[#64748b]">
-                {playerLabel}
-                {teamLabel ? ` · ${teamLabel}` : ""}
-              </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-3">
               <MetricCard
                 icon={<Activity size={18} />}
                 label="Average speed"
@@ -230,32 +248,19 @@ export default function ResultsPage() {
                 }
               />
               <MetricCard
-                icon={<Route size={18} />}
-                label="Total distance"
+                icon={<Footprints size={18} />}
+                label="Sprint distance"
                 value={
                   speedMetrics.units === "pixels"
-                    ? `${speedMetrics.total_distance_px ?? speedMetrics.total_distance_m} px`
-                    : `${speedMetrics.distance_m ?? speedMetrics.total_distance_m} m`
+                    ? `${speedMetrics.sprint_distance_px ?? speedMetrics.sprint_distance_m ?? 0} px`
+                    : `${speedMetrics.sprint_distance_m ?? 0} m`
                 }
               />
               <MetricCard
                 icon={<Zap size={18} />}
-                label="Tracked frames"
-                value={`${speedMetrics.tracked_frames ?? speedMetrics.usable_track_points}`}
+                label="Sprints"
+                value={`${speedMetrics.sprint_count ?? 0}`}
               />
-              <MetricCard
-                icon={<Route size={18} />}
-                label="Predicted / lost"
-                value={`${speedMetrics.predicted_frames ?? 0} / ${speedMetrics.lost_frames ?? 0}`}
-              />
-            </div>
-
-            <div className="card p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-[#f1f5f9]">Speed over time</h2>
-                <span className="text-xs text-[#64748b]">{speedMetrics.usable_track_points} track points</span>
-              </div>
-              <SpeedChart data={speedMetrics.speed_series ?? []} />
             </div>
           </div>
         ) : shotMetrics && analysisMode === "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
@@ -345,34 +350,54 @@ function TabButton({ active, onClick, label }: { active: boolean; onClick: () =>
 }
 
 function HeatmapsPanel({
-  positionUrl,
-  speedUrl,
+  movementUrl,
+  touchUrl,
+  touchCount,
+  passCount,
 }: {
-  positionUrl?: string | null;
-  speedUrl?: string | null;
+  movementUrl?: string | null;
+  touchUrl?: string | null;
+  touchCount?: number;
+  passCount?: number;
 }) {
-  if (!positionUrl && !speedUrl) {
+  if (!movementUrl && !touchUrl) {
     return (
       <div className="card grid min-h-48 place-items-center p-8 text-sm text-[#64748b]">
-        Heatmaps are not available for this analysis.
+        Heatmaps are not available for this analysis. Pitch calibration is required for field heatmaps.
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {positionUrl ? (
-        <div className="card overflow-hidden p-3">
-          <p className="mb-2 text-sm text-[#64748b]">Position heatmap</p>
-          <img src={mediaUrl(positionUrl) ?? ""} alt="Position heatmap" className="w-full rounded-lg" loading="lazy" />
+    <div className="space-y-4">
+      {(touchCount !== undefined || passCount !== undefined) && (
+        <div className="flex flex-wrap gap-2">
+          {touchCount !== undefined ? (
+            <span className="rounded-full bg-[#ffffff10] px-3 py-1 text-xs font-medium text-[#f1f5f9]">
+              {touchCount} touches
+            </span>
+          ) : null}
+          {passCount !== undefined ? (
+            <span className="rounded-full bg-[#3b82f6]/15 px-3 py-1 text-xs font-medium text-[#3b82f6]">
+              {passCount} passes
+            </span>
+          ) : null}
         </div>
-      ) : null}
-      {speedUrl ? (
-        <div className="card overflow-hidden p-3">
-          <p className="mb-2 text-sm text-[#64748b]">Speed heatmap</p>
-          <img src={mediaUrl(speedUrl) ?? ""} alt="Speed heatmap" className="w-full rounded-lg" loading="lazy" />
-        </div>
-      ) : null}
+      )}
+      <div className="grid gap-4 md:grid-cols-2">
+        {movementUrl ? (
+          <div className="card overflow-hidden p-3">
+            <p className="mb-2 text-sm text-[#64748b]">Movement heatmap (pitch)</p>
+            <img src={mediaUrl(movementUrl) ?? ""} alt="Movement heatmap" className="w-full rounded-lg" loading="lazy" />
+          </div>
+        ) : null}
+        {touchUrl ? (
+          <div className="card overflow-hidden p-3">
+            <p className="mb-2 text-sm text-[#64748b]">Touch &amp; pass heatmap</p>
+            <img src={mediaUrl(touchUrl) ?? ""} alt="Touch heatmap" className="w-full rounded-lg" loading="lazy" />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

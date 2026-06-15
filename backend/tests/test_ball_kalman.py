@@ -22,9 +22,9 @@ class BallKalmanTests(unittest.TestCase):
         self.tracker = BallKalmanTracker()
 
     def test_constants(self):
-        self.assertEqual(BALL_KALMAN_PROCESS_NOISE, 25.0)
-        self.assertEqual(BALL_KALMAN_MEASUREMENT_NOISE, 10.0)
-        self.assertEqual(BALL_MAX_CONSECUTIVE_MISSES, 15)
+        self.assertEqual(BALL_KALMAN_PROCESS_NOISE, 15.0)
+        self.assertEqual(BALL_KALMAN_MEASUREMENT_NOISE, 5.0)
+        self.assertEqual(BALL_MAX_CONSECUTIVE_MISSES, 45)
 
     def test_marks_interpolated_points_when_detection_missing(self):
         first = self.tracker.step(0, 0.0, self.homography, (100.0, 200.0, 0.9))
@@ -34,7 +34,7 @@ class BallKalmanTests(unittest.TestCase):
         self.assertFalse(first.interpolated)
         self.assertTrue(second.interpolated)
 
-    def test_resets_after_fifteen_consecutive_misses(self):
+    def test_resets_after_max_consecutive_misses(self):
         self.tracker.step(0, 0.0, self.homography, (100.0, 200.0, 0.9))
         last_point = None
         for frame_id in range(1, BALL_MAX_CONSECUTIVE_MISSES + 2):

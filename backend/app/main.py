@@ -1,15 +1,44 @@
+import json
+import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+
+def _load_env_file() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ[key] = value
+
+
+_load_env_file()
+if os.environ.get("ROBOFLOW_API_KEY", "").strip():
+    print("[GameSense] Roboflow API key loaded from backend/.env")
+else:
+    print("[GameSense] WARNING: ROBOFLOW_API_KEY missing in backend/.env")
 from threading import Lock
 from uuid import uuid4
 
+import cv2
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
 _team_calibration_lock = Lock()
 _cv_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cv-worker")
-
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+_frame_detection_cache: dict[tuple[str, int], list[dict]] = {}
 
 from app.models import (
     FrameDetectionsResponse,
@@ -17,47 +46,113 @@ from app.models import (
     FrameResponse,
     PlayerSelectionRequest,
     ProcessRequest,
-    UploadResponse,
     VideoResult,
 )
-from app.services.cv_pipeline import get_cv_pipeline
+from app.services.roboflow_inference import inference_available, require_roboflow_api_key
+
+try:
+    from app.services.cv_pipeline import get_ball_model, get_cv_pipeline, get_player_model
+except ImportError as exc:
+    print(f"[GameSense] CV pipeline import skipped: {exc}")
+    get_ball_model = None
+    get_cv_pipeline = None
+    get_player_model = None
+
 from app.services.processing import process_video
-from app.services.upload_limits import MAX_UPLOAD_BYTES, MAX_VIDEO_DURATION_S
 from app.services.team_classification import TeamTemplates
 from app.services.storage import (
     MEDIA_ROOT,
-    create_video_record,
     get_video_record,
     save_frame,
     save_setup_frame,
-    save_upload,
     update_video_record,
     video_dir,
     video_metadata,
 )
+from app import auth, db
+from app.services import scoring
+from app.social_routes import router as social_router
 
 app = FastAPI(title="GameSense AI Phase 1 API", version="0.1.0")
 
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 250 * 1024 * 1024:
+            return JSONResponse({"detail": "File too large. Maximum is 250MB."}, status_code=413)
+        return await call_next(request)
+
+
+# Allowed frontend origins come from GAMESENSE_ALLOWED_ORIGINS (comma-separated)
+# so production can point at the real domain without code changes.
+_allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "GAMESENSE_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(MaxBodySizeMiddleware)
 
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
 
+# Accounts, leaderboard, and leagues.
+app.include_router(social_router)
+
+
+@app.on_event("startup")
+def init_database() -> None:
+    db.init_db()
+    print("[GameSense] Leaderboard/leagues database ready.")
+
 
 @app.on_event("startup")
 def warmup_cv_pipeline() -> None:
-    get_cv_pipeline()
+    if not inference_available():
+        print(f"[GameSense] CV pipeline warmup skipped — inference-sdk missing for {sys.executable}")
+        return
+    if get_player_model is None:
+        print("[GameSense] CV pipeline warmup skipped — cv_pipeline could not be imported.")
+        return
+    try:
+        require_roboflow_api_key()
+        get_player_model()
+        get_ball_model()
+        get_cv_pipeline()
+        print("[GameSense] CV pipeline warmed up.")
+    except Exception as exc:
+        print(f"[GameSense] CV pipeline warmup skipped: {exc}")
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "service": "GameSense AI API",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | bool]:
+    return {
+        "status": "ok",
+        "python": sys.executable,
+        "inference_sdk": inference_available(),
+        "roboflow_api_key_set": bool(os.environ.get("ROBOFLOW_API_KEY", "").strip()),
+        "shooting_technique_engine": "rfdetr-mediapipe-v2-parallel",
+        "shooting_workflow_id": False,
+    }
 
 
 def _calibrate_team_classification(video_id: str) -> None:
@@ -66,7 +161,22 @@ def _calibrate_team_classification(video_id: str) -> None:
         if not record or record.get("team_classification"):
             return
         video_path = Path(record["video_path"])
-        templates = get_cv_pipeline().calibrate_team_templates(video_path)
+
+        def on_progress(done: int, total: int) -> None:
+            if done % 5 != 0 and done != total:
+                return
+            current = get_video_record(video_id)
+            if not current:
+                return
+            current["progress"] = {
+                "stage": "team_calibration",
+                "percent": 2,
+                "message": f"Detecting team colours — frame {done} of {total}",
+                "setup_percent": int(done / max(total, 1) * 100),
+            }
+            update_video_record(video_id, current)
+
+        templates = get_cv_pipeline().calibrate_team_templates(video_path, progress_callback=on_progress)
         record = get_video_record(video_id)
         if not record:
             return
@@ -75,6 +185,7 @@ def _calibrate_team_classification(video_id: str) -> None:
             "stage": "team_ready",
             "percent": 3,
             "message": "Team colours calibrated",
+            "setup_percent": 100,
         }
         update_video_record(video_id, record)
 
@@ -152,69 +263,66 @@ def _extract_setup_frame(video_id: str, video_path: Path) -> None:
         pass
 
 
-@app.post("/upload-video", response_model=UploadResponse)
-async def upload_video(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()) -> UploadResponse:
+@app.post("/upload-video")
+async def upload_video(file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    owner_id = auth.user_id_from_header(authorization)
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".mp4", ".mov"}:
-        raise HTTPException(status_code=400, detail="Only mp4 and mov uploads are supported.")
+        raise HTTPException(status_code=400, detail="Only .mp4 and .mov files are supported.")
 
     video_id = str(uuid4())
-    video_path = await save_upload(video_id, file, suffix)
+    vdir = MEDIA_ROOT / video_id
+    vdir.mkdir(parents=True, exist_ok=True)
+    video_path = vdir / f"source{suffix}"
 
-    if video_path.stat().st_size > MAX_UPLOAD_BYTES:
-        video_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=400,
-            detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit.",
-        )
+    with video_path.open("wb") as f:
+        while chunk := await file.read(4 * 1024 * 1024):
+            f.write(chunk)
 
-    metadata = video_metadata(video_path)
-    duration_s = float(metadata.get("duration_s") or 0.0)
-    if duration_s > MAX_VIDEO_DURATION_S:
-        video_path.unlink(missing_ok=True)
-        try:
-            import shutil
-            shutil.rmtree(video_dir(video_id), ignore_errors=True)
-        except OSError:
-            pass
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"This clip is {duration_s:.1f} seconds long. "
-                f"Maximum allowed duration is {int(MAX_VIDEO_DURATION_S)} seconds."
-            ),
-        )
+    cap = cv2.VideoCapture(str(video_path))
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    cap.release()
+    duration_s = frame_count / fps if fps > 0 else 0.0
+    metadata = {"fps": fps, "frame_count": frame_count, "duration_s": duration_s, "width": width, "height": height}
 
-    source_url = f"/media/{video_id}/{video_path.name}"
+    record = {
+        "video_id": video_id,
+        "owner_id": owner_id,
+        "filename": file.filename,
+        "status": "uploaded",
+        "video_path": str(video_path),
+        "source_url": f"/media/{video_id}/source{suffix}",
+        "setup_frame": None,
+        "setup_frame_id": 0,
+        "video_metadata": metadata,
+        "target_player": None,
+        "pitch_setup": None,
+        "mode": "max_speed",
+        "results": None,
+        "assets": None,
+        "warnings": [],
+        "team_colors": None,
+        "progress": {"stage": "uploaded", "percent": 0, "message": "Video uploaded"},
+    }
 
-    create_video_record(
-        video_id,
-        {
-            "video_id": video_id,
-            "filename": file.filename,
-            "status": "uploaded",
-            "video_path": str(video_path),
-            "source_url": source_url,
-            "setup_frame": None,
-            "setup_frame_id": 0,
-            "video_metadata": metadata,
-            "target_player": None,
-            "pitch_setup": None,
-            "results": None,
-            "assets": None,
-            "warnings": [],
-            "progress": {"stage": "uploaded", "percent": 1, "message": "Video uploaded"},
-        },
-    )
-    background_tasks.add_task(_extract_setup_frame, video_id, video_path)
+    record_file = vdir / "record.json"
+    record_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
 
-    return UploadResponse(
-        video_id=video_id,
-        filename=file.filename or video_path.name,
-        setup_frame_url=f"/media/{video_id}/setup-frame.jpg",
-        source_url=source_url,
-        metadata=metadata,
-    )
+    # Save the setup frame immediately and start team-colour calibration in
+    # the background so the setup page is ready (or visibly progressing) by
+    # the time the user lands on it.
+    _extract_setup_frame(video_id, video_path)
+
+    return {
+        "video_id": video_id,
+        "filename": file.filename,
+        "setup_frame_url": f"/media/{video_id}/setup-frame.jpg",
+        "source_url": f"/media/{video_id}/source{suffix}",
+        "metadata": metadata,
+    }
 
 
 @app.get("/frames/{video_id}/{frame_id}", response_model=FrameResponse)
@@ -253,13 +361,12 @@ def get_frame_detections(video_id: str, frame_id: int) -> FrameDetectionsRespons
 
     video_path = Path(record["video_path"])
     team_templates = _ensure_team_classification(video_id, record, video_path)
-    cached = record.get("last_detections") or {}
-    if cached.get("frame_id") == frame_id:
-        detections = cached.get("detections") or []
+    cache_key = (video_id, frame_id)
+    if cache_key in _frame_detection_cache:
+        detections = _frame_detection_cache[cache_key]
     else:
         detections = _detect_frame(video_path, frame_id, team_templates)
-        record["last_detections"] = {"frame_id": frame_id, "detections": detections}
-        update_video_record(video_id, record)
+        _frame_detection_cache[cache_key] = detections
 
     return FrameDetectionsResponse(video_id=video_id, frame_id=frame_id, detections=detections)
 
@@ -324,19 +431,32 @@ def process(payload: ProcessRequest) -> dict[str, str]:
     record = get_video_record(payload.video_id)
     if not record:
         raise HTTPException(status_code=404, detail="Video not found.")
-    if not record.get("target_player"):
+    if payload.mode != "shooting_technique" and not record.get("target_player"):
         raise HTTPException(status_code=400, detail="Target player must be selected before processing.")
 
     record["status"] = "processing"
     record["mode"] = payload.mode
+    record["player_height_cm"] = payload.player_height_cm
     record["warnings"] = []
     record["results"] = None
+    record["shooting_result"] = None
     record["assets"] = None
-    record["progress"] = {"stage": "calibration", "percent": 2, "message": "Calibrating pitch"}
+    if payload.mode == "shooting_technique":
+        record["progress"] = {"stage": "detection", "percent": 10, "message": "Starting shooting technique analysis"}
+    else:
+        record["progress"] = {"stage": "calibration", "percent": 2, "message": "Calibrating pitch"}
     update_video_record(payload.video_id, record)
     _cv_executor.submit(process_video, payload.video_id)
 
     return {"video_id": payload.video_id, "status": "processing"}
+
+
+@app.get("/shooting-result/{video_id}")
+def shooting_result(video_id: str) -> dict:
+    record = get_video_record(video_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Video not found.")
+    return record.get("shooting_result") or {}
 
 
 @app.get("/results/{video_id}", response_model=VideoResult)
@@ -358,6 +478,15 @@ def results(video_id: str) -> VideoResult:
         if record.get("assets") != assets:
             record["assets"] = assets
             update_video_record(video_id, record)
+
+    # Award leaderboard points once a result is complete and the clip belongs
+    # to a signed-in user. Idempotent — scored at most once per video.
+    if record.get("status") == "complete" and record.get("owner_id"):
+        try:
+            scoring.record_upload_score(record["owner_id"], record)
+        except Exception as exc:  # never break results delivery over scoring
+            print(f"[GameSense] Scoring skipped for {video_id}: {exc}")
+
     return VideoResult.model_validate(record)
 
 

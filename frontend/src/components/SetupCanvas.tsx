@@ -6,7 +6,7 @@ import type { Detection, Point, TeamClassificationInfo, VideoMetadata } from "@/
 import { isPlayerDetection, teamColorCss } from "@/lib/api";
 import { drawSetupDetections } from "@/lib/overlay";
 
-type Mode = "player" | "pitch" | "goal-left" | "goal-right";
+type Mode = "player" | "pitch" | "goal-posts";
 
 type Props = {
   videoUrl: string;
@@ -17,16 +17,29 @@ type Props = {
   selectedDetection: Detection | null;
   playerPoint: Point | null;
   pitchPolygon: Point[];
-  goalLeft: Point | null;
-  goalRight: Point | null;
+  goalPosts: Point[];
   teamClassification?: TeamClassificationInfo | null;
   onFrameChange: (frameId: number) => void;
   onPlayerPoint: (point: Point, detection: Detection | null) => void;
   onPitchPoint: (point: Point) => void;
-  onGoalLeft: (point: Point) => void;
-  onGoalRight: (point: Point) => void;
+  onGoalPostPoint: (point: Point) => void;
   onRemovePitchPoint: (index: number) => void;
+  onRemoveGoalPostPoint: (index: number) => void;
 };
+
+/** Classify the 4 goal-frame clicks (any order): two leftmost = left post,
+ * smaller y within a post = top. Mirrors the backend normalisation. */
+function goalFrameLines(points: Point[]): [Point, Point][] {
+  if (points.length !== 4) return [];
+  const byX = [...points].sort((a, b) => a.x - b.x);
+  const left = [...byX.slice(0, 2)].sort((a, b) => a.y - b.y);
+  const right = [...byX.slice(2)].sort((a, b) => a.y - b.y);
+  return [
+    [left[1], left[0]],   // left post: base -> top
+    [left[0], right[0]],  // crossbar
+    [right[0], right[1]], // right post: top -> base
+  ];
+}
 
 export function SetupCanvas({
   videoUrl,
@@ -37,15 +50,14 @@ export function SetupCanvas({
   selectedDetection,
   playerPoint,
   pitchPolygon,
-  goalLeft,
-  goalRight,
+  goalPosts,
   teamClassification,
   onFrameChange,
   onPlayerPoint,
   onPitchPoint,
-  onGoalLeft,
-  onGoalRight,
+  onGoalPostPoint,
   onRemovePitchPoint,
+  onRemoveGoalPostPoint,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,8 +104,12 @@ export function SetupCanvas({
   }, [redraw]);
 
   useEffect(() => {
-    redraw();
-  }, [detections, frameId, redraw]);
+    const frame = window.requestAnimationFrame(() => {
+      redraw();
+      window.requestAnimationFrame(redraw);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detections, frameId, redraw, videoUrl]);
 
   function syncFrameFromVideo() {
     const video = videoRef.current;
@@ -143,8 +159,7 @@ export function SetupCanvas({
     const detection = playerDetections.find((candidate) => containsPoint(candidate, point)) ?? null;
     if (mode === "player") onPlayerPoint(point, detection);
     if (mode === "pitch") onPitchPoint(point);
-    if (mode === "goal-left") onGoalLeft(point);
-    if (mode === "goal-right") onGoalRight(point);
+    if (mode === "goal-posts" && goalPosts.length < 4) onGoalPostPoint(point);
   }
 
   const teamALegend = teamClassification?.team_a.display_color;
@@ -179,18 +194,44 @@ export function SetupCanvas({
                 strokeLinejoin="round"
               />
             )}
-            {[goalLeft, goalRight].map((goal, index) =>
-              goal ? (
-                <circle
-                  key={index}
-                  cx={goal.x}
-                  cy={goal.y}
-                  r={Math.max(width / 120, 8)}
-                  fill={index === 0 ? "#f59e0b" : "#10b981"}
-                />
-              ) : null,
-            )}
+            {goalFrameLines(goalPosts).map(([a, b], index) => (
+              <line
+                key={`goal-line-${index}`}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke="#f59e0b"
+                strokeWidth={Math.max(width / 360, 2)}
+                strokeLinecap="round"
+              />
+            ))}
+            {goalPosts.map((point, index) => (
+              <circle
+                key={`goal-post-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={Math.max(width / 200, 5)}
+                fill="#f59e0b"
+                stroke="#ffffff"
+                strokeWidth={Math.max(width / 900, 1.5)}
+              />
+            ))}
           </svg>
+
+          {goalPosts.map((point, index) => (
+            <button
+              key={`goal-post-btn-${point.x}-${point.y}-${index}`}
+              type="button"
+              title="Remove goal post point"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemoveGoalPostPoint(index);
+              }}
+              className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#f59e0b] shadow-lg"
+              style={{ left: `${(point.x / width) * 100}%`, top: `${(point.y / height) * 100}%` }}
+            />
+          ))}
 
           {pitchPolygon.map((point, index) => (
             <button
@@ -213,6 +254,14 @@ export function SetupCanvas({
           )}
         </div>
         <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-20 h-full w-full" />
+
+        {mode === "goal-posts" && (
+          <div className="pointer-events-none absolute left-3 top-3 z-30 max-w-xs rounded-lg border border-amber-400/40 bg-[#111118]/90 px-3 py-2 text-xs text-amber-200">
+            {goalPosts.length < 4
+              ? `Click the 4 corners of the goal frame — both post bases and both post tops (${goalPosts.length}/4). Any order.`
+              : "Goal frame marked — scale locked to the goal size (7.32 m × 2.44 m)."}
+          </div>
+        )}
 
         {(teamALegend || teamBLegend) && (
           <div className="pointer-events-none absolute right-3 top-3 flex gap-2 rounded-lg border border-[#ffffff14] bg-[#111118]/90 px-3 py-2 text-xs text-[#f1f5f9]">

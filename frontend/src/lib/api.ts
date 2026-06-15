@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export type Point = { x: number; y: number };
 export type BoundingBox = { x: number; y: number; width: number; height: number };
@@ -41,7 +41,49 @@ export type VideoMetadata = {
   height: number;
 };
 
-export type AnalysisMode = "max_speed" | "max_shot_power";
+export type AnalysisMode = "max_speed" | "max_shot_power" | "shooting_technique";
+
+export type BodyAngle = {
+  name: string;
+  value_deg: number;
+  frame_id: number;
+  time_s: number;
+};
+
+export type TechniqueFrame = {
+  frame_id: number;
+  time_s: number;
+  angles: BodyAngle[];
+  ball_visible: boolean;
+  foot_to_ball_px: number | null;
+  phase: string;
+};
+
+export type ShootingFeedback = {
+  shot_power_kmh: number;
+  technique_score: number;
+  approach_angle_deg: number;
+  plant_foot_distance_cm: number;
+  knee_bend_at_contact_deg: number;
+  hip_rotation_deg: number;
+  follow_through_height: string;
+  feedback_points: string[];
+  annotated_video_url: string | null;
+  contact_frame_url?: string | null;
+  frame_analysis: TechniqueFrame[];
+  confidence: number;
+  contact_frame_id?: number | null;
+  backswing_knee_flexion_deg?: number;
+  ankle_lock_variation_deg?: number;
+  follow_through_height_ratio?: number;
+  power_rating?: string;
+  kicking_foot?: string;
+  scale_source?: string;
+  shot_distance_m?: number;
+  on_target?: boolean | null;
+  goal_crossing_height_m?: number;
+  goal_crossing_offset_m?: number;
+};
 
 export type Metrics = {
   player_id: number;
@@ -71,6 +113,8 @@ export type Metrics = {
   usable_track_points: number;
   rejected_jump_count?: number;
   confidence_score: number;
+  touch_count?: number;
+  pass_count?: number;
 };
 
 export type ShotEvent = {
@@ -92,6 +136,8 @@ export type ShotMetrics = {
   confidence_score: number;
   usable_track_points: number;
   rejected_track_points: number;
+  touch_count?: number;
+  pass_count?: number;
 };
 
 export type VideoResult = {
@@ -107,11 +153,14 @@ export type VideoResult = {
   team_classification?: TeamClassificationInfo | null;
   pitch_setup?: Record<string, unknown> | null;
   results?: Metrics | ShotMetrics | null;
+  shooting_result?: ShootingFeedback | null;
   assets?: {
     sprint_highlights: string[];
     detections_json?: string;
     position_heatmap?: string;
     speed_heatmap?: string;
+    movement_heatmap?: string;
+    touch_heatmap?: string;
   } | null;
   warnings: string[];
   progress?: {
@@ -157,12 +206,42 @@ export function isPlayerDetection(detection: Detection): boolean {
 export async function uploadVideo(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
-  return parseResponse<UploadResponse>(
-    await fetch(`${API_BASE}/upload-video`, {
+  let response: Response;
+  try {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("gamesense_token") : null;
+    response = await fetch(`${API_BASE}/upload-video`, {
       method: "POST",
       body: formData,
-    }),
-  );
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+  } catch (error) {
+    console.error("Network error — backend may not be running", error);
+    throw new Error("Could not reach the server. Is the backend running on port 8000?");
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = "Upload failed.";
+    try {
+      const body = JSON.parse(text) as { detail?: unknown; message?: string };
+      const detail = body.detail ?? body.message;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail)) {
+        message = detail.map((entry) => (typeof entry === "object" && entry && "msg" in entry ? String(entry.msg) : String(entry))).join("; ");
+      } else if (detail) {
+        message = String(detail);
+      } else {
+        message = text || `HTTP ${response.status}`;
+      }
+    } catch {
+      message = text || `HTTP ${response.status}`;
+    }
+    console.error("Upload error:", response.status, text);
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<UploadResponse>;
 }
 
 export async function getFrame(videoId: string, frameId: number): Promise<{ frame_url: string; frame_id: number; detections: Detection[] }> {
@@ -204,6 +283,7 @@ export async function setPitchPolygon(
   frameId: number,
   goalLeft?: Point | null,
   goalRight?: Point | null,
+  goalPosts?: Point[] | null,
 ): Promise<void> {
   await parseResponse(
     await fetch(`${API_BASE}/set-pitch-polygon`, {
@@ -215,23 +295,38 @@ export async function setPitchPolygon(
         frame_id: frameId,
         goal_left: goalLeft,
         goal_right: goalRight,
+        goal_posts: goalPosts && goalPosts.length === 4 ? { points: goalPosts } : null,
       }),
     }),
   );
 }
 
-export async function processVideo(videoId: string, mode: AnalysisMode = "max_speed"): Promise<void> {
+export async function processVideo(
+  videoId: string,
+  mode: AnalysisMode = "max_speed",
+  playerHeightCm?: number | null,
+): Promise<void> {
   await parseResponse(
     await fetch(`${API_BASE}/process-video`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ video_id: videoId, mode }),
+      body: JSON.stringify({
+        video_id: videoId,
+        mode,
+        player_height_cm: playerHeightCm ?? null,
+      }),
     }),
   );
 }
 
 export async function getResults(videoId: string): Promise<VideoResult> {
   return parseResponse<VideoResult>(await fetch(`${API_BASE}/results/${videoId}`, { cache: "no-store" }));
+}
+
+export async function getShootingResult(videoId: string): Promise<ShootingFeedback> {
+  return parseResponse<ShootingFeedback>(
+    await fetch(`${API_BASE}/shooting-result/${videoId}`, { cache: "no-store" }),
+  );
 }
 
 export async function getPreviewFrame(videoId: string): Promise<string> {
@@ -265,4 +360,32 @@ export function mediaUrl(path?: string | null): string | null {
   if (!path) return null;
   if (path.startsWith("http")) return path;
   return `${API_BASE}${path}`;
+}
+
+/** True when annotated output is a still frame (Roboflow workflow) rather than a video. */
+export function isImageMediaUrl(path?: string | null): boolean {
+  if (!path) return false;
+  const normalized = path.split("?")[0]?.toLowerCase() ?? "";
+  return normalized.endsWith(".jpg") || normalized.endsWith(".jpeg") || normalized.endsWith(".png") || normalized.endsWith(".webp");
+}
+
+export function contactTechniqueFrame(feedback: ShootingFeedback): TechniqueFrame | undefined {
+  if (feedback.contact_frame_id != null) {
+    const match = feedback.frame_analysis.find((frame) => frame.frame_id === feedback.contact_frame_id);
+    if (match) return match;
+  }
+  return feedback.frame_analysis.find((frame) => frame.phase.toLowerCase().includes("contact"));
+}
+
+export function techniqueAngleDeg(
+  feedback: ShootingFeedback,
+  ...names: string[]
+): number | null {
+  const frame = contactTechniqueFrame(feedback);
+  if (!frame) return null;
+  for (const name of names) {
+    const angle = frame.angles.find((entry) => entry.name === name);
+    if (angle != null) return angle.value_deg;
+  }
+  return null;
 }

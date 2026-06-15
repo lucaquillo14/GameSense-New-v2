@@ -8,6 +8,7 @@ import {
   frameIdFromTime,
   lookupOverlayFrame,
 } from "@/lib/overlay";
+import type { SpeedSeriesPoint } from "@/lib/api";
 
 type Props = {
   videoUrl: string;
@@ -16,7 +17,22 @@ type Props = {
   durationS: number;
   overlay: DetectionsOverlay | null;
   targetPlayerId?: string | null;
+  speedSeries?: SpeedSeriesPoint[];
 };
+
+function speedAtTime(series: SpeedSeriesPoint[] | undefined, t: number, tolerance = 0.6): number | null {
+  if (!series || series.length === 0) return null;
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const point of series) {
+    const dist = Math.abs(point.time_s - t);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = point.speed_kmh;
+    }
+  }
+  return bestDist <= tolerance ? best : null;
+}
 
 export function VideoPlaybackOverlay({
   videoUrl,
@@ -25,6 +41,7 @@ export function VideoPlaybackOverlay({
   durationS,
   overlay,
   targetPlayerId,
+  speedSeries,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -44,8 +61,9 @@ export function VideoPlaybackOverlay({
     }
     const currentFrame = frameIdFromTime(video.currentTime, overlay.fps || fps);
     const detections = lookupOverlayFrame(overlay.frames, currentFrame, overlay.interval || 1);
-    drawOverlayDetections(canvas, video, detections, targetId);
-  }, [overlay, fps, targetId]);
+    const currentSpeed = speedAtTime(speedSeries, video.currentTime);
+    drawOverlayDetections(canvas, video, detections, targetId, currentSpeed);
+  }, [overlay, fps, targetId, speedSeries]);
 
   useEffect(() => {
     const video = videoRef.current;
