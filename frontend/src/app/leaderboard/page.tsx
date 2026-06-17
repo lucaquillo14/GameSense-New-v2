@@ -2,6 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { LeaderboardTable } from "@/components/LeaderboardTable";
+import { Podium } from "@/components/Podium";
 import {
   getLeaderboard,
   getStoredUser,
@@ -91,12 +92,15 @@ export default function LeaderboardPage() {
             {error}
           </div>
         ) : (
-          <LeaderboardTable
-            entries={entries}
-            sort={sort}
-            onSortChange={setSort}
-            highlightUserId={me?.id}
-          />
+          <>
+            <Podium entries={entries} sort={sort} highlightUserId={me?.id} />
+            <LeaderboardTable
+              entries={entries}
+              sort={sort}
+              onSortChange={setSort}
+              highlightUserId={me?.id}
+            />
+          </>
         )}
       </section>
     </AppShell>
