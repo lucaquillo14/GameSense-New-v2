@@ -239,10 +239,58 @@ input[type="range"] {
 /* ── Typography ──────────────────────────────────────────── */
 
 .gradient-text {
-  background: var(--grad);
+  background: linear-gradient(110deg, #22d3ee 0%, #3b82f6 30%, #8b5cf6 55%, #22d3ee 100%);
+  background-size: 220% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: gradient-pan 6s linear infinite;
+}
+
+@keyframes gradient-pan {
+  to { background-position: 220% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gradient-text { animation: none; }
+}
+
+/* Soft float for hero showcase cards */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.float-slow { animation: float-y 6s ease-in-out infinite; }
+.float-slower { animation: float-y 8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .float-slow, .float-slower { animation: none; }
+}
+
+/* Premium shine sweep on primary buttons */
+.btn-primary,
+.btn-gradient {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after,
+.btn-gradient::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(110deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-18deg);
+  transition: left 600ms ease;
+}
+
+.btn-primary:hover:not(:disabled)::after,
+.btn-gradient:hover:not(:disabled)::after {
+  left: 130%;
 }
 
 .energy-text {

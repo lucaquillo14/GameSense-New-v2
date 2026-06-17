@@ -109,6 +109,34 @@ export default function UploadPage() {
               <Activity size={13} className="text-cyan-400" /> Technique scoring
             </span>
           </div>
+
+          {/* Live stats showcase */}
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <ShowcaseStat
+              className="float-slow"
+              icon={<Gauge size={16} />}
+              label="Top speed"
+              value="32.4"
+              unit="km/h"
+              tone="cyan"
+            />
+            <ShowcaseStat
+              className="float-slower -mt-4"
+              icon={<Zap size={16} />}
+              label="Shot power"
+              value="98"
+              unit="km/h"
+              tone="violet"
+            />
+            <ShowcaseStat
+              className="float-slow"
+              icon={<Activity size={16} />}
+              label="Technique"
+              value="8.6"
+              unit="/ 10"
+              tone="energy"
+            />
+          </div>
         </div>
 
         {/* ── Upload card ──────────────────────────────────────── */}
@@ -219,6 +247,40 @@ export default function UploadPage() {
         </div>
       </section>
     </AppShell>
+  );
+}
+
+function ShowcaseStat({
+  icon,
+  label,
+  value,
+  unit,
+  tone,
+  className = "",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  unit: string;
+  tone: "cyan" | "violet" | "energy";
+  className?: string;
+}) {
+  const tones = {
+    cyan: "text-cyan-300 shadow-[0_0_30px_-8px_rgba(6,182,212,0.5)]",
+    violet: "text-violet-300 shadow-[0_0_30px_-8px_rgba(139,92,246,0.5)]",
+    energy: "text-lime-300 shadow-[0_0_30px_-8px_rgba(163,230,53,0.5)]",
+  } as const;
+  return (
+    <div className={`card flex w-40 flex-col gap-1 p-4 text-left ${tones[tone]} ${className}`}>
+      <span className="data-label flex items-center gap-1.5">
+        <span className={tones[tone].split(" ")[0]}>{icon}</span>
+        {label}
+      </span>
+      <div className="flex items-end gap-1">
+        <span className="stat-value text-3xl font-bold text-[#eef2ff]">{value}</span>
+        <span className="mb-1 text-xs text-[#6b7a99]">{unit}</span>
+      </div>
+    </div>
   );
 }
 
