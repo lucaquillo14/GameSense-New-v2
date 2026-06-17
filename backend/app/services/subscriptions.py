@@ -48,7 +48,7 @@ TIERS: dict[str, dict] = {
     },
     "pro": {
         "name": "Pro",
-        "price_monthly": 999,  # $9.99 — display only; Stripe price is authoritative
+        "price_monthly": 599,  # £5.99 — display only; Stripe price is authoritative
         "badge": "pro",
         "tagline": "Full analytics for serious players.",
         "limits": {
@@ -71,7 +71,7 @@ TIERS: dict[str, dict] = {
     },
     "elite": {
         "name": "Elite",
-        "price_monthly": 1999,  # $19.99 — display only
+        "price_monthly": 1099,  # £10.99 — display only
         "badge": "elite",
         "tagline": "Everything, unlimited, first.",
         "limits": {},  # unlimited

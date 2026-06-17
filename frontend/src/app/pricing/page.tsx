@@ -198,7 +198,7 @@ export default function PricingPage() {
         )}
 
         <p className="mt-10 text-center text-xs text-[#3a4560]">
-          Secure payments by Stripe · Cancel anytime · Prices in USD
+          Secure payments by Stripe · Cancel anytime · Prices in GBP
         </p>
       </section>
     </AppShell>

@@ -120,12 +120,14 @@ export async function resumeSubscription(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Display helpers
 // ---------------------------------------------------------------------------
+const CURRENCY_SYMBOLS: Record<string, string> = { gbp: "£", usd: "$", eur: "€" };
+
 export function formatPrice(cents: number): string {
   if (!cents) return "Free";
-  return `$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
+  return `£${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;
 }
 
-export function formatAmount(cents: number, currency = "usd"): string {
-  const symbol = currency.toLowerCase() === "usd" ? "$" : "";
+export function formatAmount(cents: number, currency = "gbp"): string {
+  const symbol = CURRENCY_SYMBOLS[currency.toLowerCase()] ?? "";
   return `${symbol}${(cents / 100).toFixed(2)}${symbol ? "" : ` ${currency.toUpperCase()}`}`;
 }
