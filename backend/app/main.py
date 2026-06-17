@@ -31,7 +31,7 @@ from uuid import uuid4
 import cv2
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -525,6 +525,36 @@ def results(video_id: str) -> VideoResult:
     record = {**record, "locked_features": locked}
 
     return VideoResult.model_validate(record)
+
+
+@app.get("/technique-report/{video_id}")
+def technique_report(video_id: str, authorization: str | None = Header(default=None)):
+    """Downloadable PDF report for a shooting-technique analysis. Pro+ only."""
+    user_id = auth.user_id_from_header(authorization)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to download reports.")
+    if not subscriptions.has_feature(user_id, "reports"):
+        raise HTTPException(
+            status_code=402,
+            detail="Downloadable reports are a Pro feature. Upgrade to download your technique report.",
+        )
+
+    record = get_video_record(video_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Video not found.")
+    if record.get("owner_id") and record["owner_id"] != user_id:
+        raise HTTPException(status_code=403, detail="This report belongs to another account.")
+    if record.get("mode") != "shooting_technique" or not record.get("shooting_result"):
+        raise HTTPException(status_code=400, detail="No technique analysis available for this clip.")
+
+    from app.services.technique_report import build_pdf
+
+    pdf_bytes = build_pdf(record)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="gamesense-technique-{video_id[:8]}.pdf"'},
+    )
 
 
 @app.get("/preview/{video_id}")

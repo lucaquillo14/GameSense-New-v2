@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
+  downloadTechniqueReport,
   getResults,
   isImageMediaUrl,
   mediaUrl,
@@ -11,10 +12,14 @@ import {
   techniqueAngleDeg,
   uploadVideo,
 } from "@/lib/api";
+import { getStoredUser } from "@/lib/socialApi";
 import { formatDuration, MAX_UPLOAD_MB, validateFileSize } from "@/lib/uploadLimits";
 import {
   AlertCircle,
   ArrowLeft,
+  Crown,
+  Download,
+  FileText,
   Loader2,
   Target,
   UploadCloud,
@@ -190,6 +195,26 @@ export default function TechniquePage() {
   const [progress, setProgress] = useState({ percent: 0, message: "Starting analysis" });
   const [feedback, setFeedback] = useState<ShootingFeedback | null>(null);
   const [resultsTab, setResultsTab] = useState<"video" | "contact" | "feedback">("video");
+  const [tier, setTier] = useState<string>("free");
+  const [downloading, setDownloading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // Read membership after mount (localStorage isn't available during SSR).
+  useEffect(() => setTier(getStoredUser()?.tier ?? "free"), []);
+  const isPaying = tier === "pro" || tier === "elite";
+
+  async function onDownloadReport() {
+    if (!videoId) return;
+    setReportError(null);
+    setDownloading(true);
+    try {
+      await downloadTechniqueReport(videoId);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Could not generate the report.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   async function onFileSelected(next: File | null) {
     setError(null);
@@ -422,6 +447,37 @@ export default function TechniquePage() {
 
         {view === "results" && feedback && (
           <div className="space-y-8">
+            {/* Download report — Pro+ gets the PDF, free users get an upgrade nudge. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              {reportError && (
+                <span className="flex items-center gap-1.5 text-xs text-red-300">
+                  <AlertCircle size={13} /> {reportError}
+                </span>
+              )}
+              {isPaying ? (
+                <button
+                  type="button"
+                  onClick={() => void onDownloadReport()}
+                  disabled={downloading}
+                  className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  {downloading ? "Preparing PDF…" : "Download PDF report"}
+                </button>
+              ) : (
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/8 px-4 py-2.5 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-500/15"
+                >
+                  <FileText size={16} />
+                  Download PDF report
+                  <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-300">
+                    <Crown size={10} /> Pro
+                  </span>
+                </Link>
+              )}
+            </div>
+
             <div className="card flex flex-col items-center gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-6">
                 <div className="text-center">

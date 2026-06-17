@@ -328,6 +328,28 @@ export async function getResults(videoId: string): Promise<VideoResult> {
   return parseResponse<VideoResult>(await fetch(`${API_BASE}/results/${videoId}`, { cache: "no-store" }));
 }
 
+/** Download the technique-analysis PDF report (Pro+ only). Triggers a browser save. */
+export async function downloadTechniqueReport(videoId: string): Promise<void> {
+  const token = typeof window !== "undefined" ? window.localStorage.getItem("gamesense_token") : null;
+  const response = await fetch(`${API_BASE}/technique-report/${videoId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(friendlyError(payload?.detail, response.status));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `gamesense-technique-${videoId.slice(0, 8)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getShootingResult(videoId: string): Promise<ShootingFeedback> {
   return parseResponse<ShootingFeedback>(
     await fetch(`${API_BASE}/shooting-result/${videoId}`, { cache: "no-store" }),

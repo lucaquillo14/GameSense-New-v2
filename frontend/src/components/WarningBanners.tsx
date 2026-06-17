@@ -3,9 +3,19 @@
 import { AlertTriangle, X } from "lucide-react";
 import { useState } from "react";
 
+// Internal calibration diagnostics that shouldn't be surfaced to users.
+const HIDDEN_PATTERNS = [
+  "calibration scale looks wrong",
+  "Scale calibrated from the goal frame",
+];
+
+function isHidden(warning: string): boolean {
+  return HIDDEN_PATTERNS.some((p) => warning.toLowerCase().includes(p.toLowerCase()));
+}
+
 export function WarningBanners({ warnings }: { warnings: string[] }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const visible = warnings.filter((warning) => !dismissed.has(warning));
+  const visible = warnings.filter((warning) => !dismissed.has(warning) && !isHidden(warning));
   if (!visible.length) return null;
 
   return (
