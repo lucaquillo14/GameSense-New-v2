@@ -245,4 +245,10 @@ def annotate_video(
 
     writer.release()
     capture.release()
+
+    # OpenCV's mp4v output isn't browser-playable; transcode to H.264 via ffmpeg.
+    from app.services.shooting_technique_pipeline import _ensure_browser_playable
+
+    _ensure_browser_playable(output_path)
+
     return f"/media/{video_id}/annotated-{video_id}.mp4"
