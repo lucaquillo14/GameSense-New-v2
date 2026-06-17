@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Gauge, LogIn, LogOut, Medal, Sparkles, Trophy, Upload, Users } from "lucide-react";
+import { Clock, Gauge, Home, LogIn, LogOut, Medal, Sparkles, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -83,7 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-1 rounded-xl border border-white/[0.07] bg-[#09090f]/80 p-1.5 backdrop-blur-md sm:flex">
-            {navItem("/", <Upload size={14} />, "Upload")}
+            {navItem("/", <Home size={14} />, "Home")}
             {navItem("/leaderboard", <Trophy size={14} />, "Leaderboard")}
             {navItem("/leagues", <Users size={14} />, "Leagues")}
             {navItem("/history", <Clock size={14} />, "History")}
@@ -133,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile bottom dock ──────────────────────────────── */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-around border-t border-white/[0.06] bg-[#04040a]/95 px-2 py-1 backdrop-blur-xl sm:hidden">
-        {mobileNavItem("/", <Upload size={20} />, "Upload")}
+        {mobileNavItem("/", <Home size={20} />, "Home")}
         {mobileNavItem("/leaderboard", <Trophy size={20} />, "Board")}
         {mobileNavItem("/leagues", <Users size={20} />, "Leagues")}
         {mobileNavItem("/history", <Clock size={20} />, "History")}
