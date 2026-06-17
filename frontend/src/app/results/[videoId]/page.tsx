@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { ProcessingPreview } from "@/components/ProcessingPreview";
 import { ProcessingProgress } from "@/components/ProcessingProgress";
 import { ConfidenceDot } from "@/components/SpeedChart";
+import { CountUp } from "@/components/CountUp";
 import { WarningBanners } from "@/components/WarningBanners";
 import { VideoPlaybackOverlay } from "@/components/VideoPlaybackOverlay";
 import { getDetectionsOverlay, getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
@@ -195,17 +196,22 @@ export default function ResultsPage() {
 
             {/* Hero stat card */}
             <div className="card relative overflow-hidden p-8">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
               <div className="pointer-events-none absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-blue-500/6 blur-2xl" />
               <div className="grid gap-8 sm:grid-cols-2">
                 <div>
                   <p className="data-label">Top speed</p>
                   <div className="mt-3 flex items-end gap-2">
-                    <span className="stat-value text-7xl font-bold leading-none neon-text-cyan">
-                      {speedMetrics.units === "pixels"
-                        ? speedMetrics.top_speed_px_per_s
-                        : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh)}
-                    </span>
+                    <CountUp
+                      className="stat-value text-7xl font-bold leading-none neon-text-cyan"
+                      value={Number(
+                        speedMetrics.units === "pixels"
+                          ? speedMetrics.top_speed_px_per_s
+                          : (speedMetrics.max_speed_kmh ?? speedMetrics.top_speed_kmh),
+                      )}
+                      decimals={speedMetrics.units === "pixels" ? 0 : 1}
+                    />
                     <span className="mb-1.5 text-xl text-[#6b7a99]">
                       {speedMetrics.units === "pixels" ? "px/s" : "km/h"}
                     </span>
@@ -214,11 +220,15 @@ export default function ResultsPage() {
                 <div>
                   <p className="data-label">Distance covered</p>
                   <div className="mt-3 flex items-end gap-2">
-                    <span className="stat-value text-7xl font-bold leading-none text-[#eef2ff]">
-                      {speedMetrics.units === "pixels"
-                        ? (speedMetrics.total_distance_px ?? speedMetrics.total_distance_m)
-                        : (speedMetrics.distance_m ?? speedMetrics.total_distance_m)}
-                    </span>
+                    <CountUp
+                      className="stat-value text-7xl font-bold leading-none text-[#eef2ff]"
+                      value={Number(
+                        speedMetrics.units === "pixels"
+                          ? (speedMetrics.total_distance_px ?? speedMetrics.total_distance_m)
+                          : (speedMetrics.distance_m ?? speedMetrics.total_distance_m),
+                      )}
+                      decimals={speedMetrics.units === "pixels" ? 0 : 1}
+                    />
                     <span className="mb-1.5 text-xl text-[#6b7a99]">
                       {speedMetrics.units === "pixels" ? "px" : "m"}
                     </span>
@@ -265,13 +275,16 @@ export default function ResultsPage() {
         ) : shotMetrics && analysisMode === "max_shot_power" && result?.status === "complete" && activeTab === "overview" ? (
           <div className="mt-2 space-y-4">
             <div className="card relative overflow-hidden p-8">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
               <p className="data-label">Peak shot speed</p>
               <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
                 <div className="flex items-end gap-2">
-                  <span className="stat-value text-7xl font-bold leading-none neon-text-cyan">
-                    {shotMetrics.peak_shot_speed_kmh}
-                  </span>
+                  <CountUp
+                    className="stat-value text-7xl font-bold leading-none neon-text-cyan"
+                    value={Number(shotMetrics.peak_shot_speed_kmh)}
+                    decimals={1}
+                  />
                   <span className="mb-1.5 text-xl text-[#6b7a99]">km/h</span>
                 </div>
                 <ConfidenceDot score={confidenceScore} />
@@ -478,9 +491,9 @@ function UpgradeLock({ title, body }: { title: string; body: string }) {
 
 function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="card p-5">
+    <div className="card card-hover p-5">
       <div className="data-label flex items-center gap-1.5">
-        <span className="text-cyan-500">{icon}</span>
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-cyan-500/12 text-cyan-300">{icon}</span>
         {label}
       </div>
       <p className="stat-value mt-3 text-2xl text-[#eef2ff]">{value}</p>
