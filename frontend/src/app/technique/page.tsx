@@ -446,7 +446,7 @@ export default function TechniquePage() {
 
         {view === "upload" && (
           <div className="card p-6">
-            <label className="dropzone-hover group flex min-h-64 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#ffffff14] bg-[#09090f] px-6 py-10 text-center">
+            <label className="dropzone-hover group flex min-h-64 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/[0.07] bg-[#09090f] px-6 py-10 text-center">
               <span className="grid h-14 w-14 place-items-center rounded-xl bg-[#0891b2] text-white shadow-[0_0_28px_rgba(37,99,235,0.35)]">
                 {checking ? <Loader2 size={28} className="animate-spin" /> : <UploadCloud size={28} />}
               </span>
@@ -498,9 +498,9 @@ export default function TechniquePage() {
                 <p className="text-sm text-[#6b7a99]">Detecting objects, tracking pose, and rendering annotated output…</p>
               </div>
             </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#ffffff14]">
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.07]">
               <div
-                className="h-full rounded-full bg-[#06b6d4] transition-all duration-500"
+                className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
                 style={{ width: `${Math.max(progress.percent, 4)}%` }}
               />
             </div>
@@ -540,8 +540,10 @@ export default function TechniquePage() {
               )}
             </div>
 
-            <div className="card flex flex-col items-center gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-6">
+            <div className="card relative flex flex-col items-center gap-6 overflow-hidden p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
+              <div className="relative flex items-center gap-6">
                 <div className="text-center">
                   <p className="data-label mb-2">Technique score</p>
                   <ScoreRing score={feedback.technique_score} />
@@ -578,14 +580,14 @@ export default function TechniquePage() {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap justify-center gap-2 text-xs">
+              <div className="relative flex flex-wrap justify-center gap-2 text-xs">
                 {feedback.kicking_foot ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 font-medium text-[#c4d0f0]">
                     {feedback.kicking_foot === "left" ? "Left" : "Right"}-footed strike
                   </span>
                 ) : null}
                 {feedback.shot_distance_m && feedback.shot_distance_m > 0 ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 font-medium text-[#c4d0f0]">
                     ~{feedback.shot_distance_m.toFixed(1)} m from goal
                   </span>
                 ) : null}
@@ -606,24 +608,24 @@ export default function TechniquePage() {
                   </span>
                 ) : null}
                 {feedback.contact_frame_id != null ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 font-medium text-[#c4d0f0]">
                     Contact at frame {feedback.contact_frame_id}
                   </span>
                 ) : null}
                 {feedback.confidence > 0 ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 font-medium text-[#c4d0f0]">
                     Confidence {(feedback.confidence * 100).toFixed(0)}%
                   </span>
                 ) : null}
                 {feedback.scale_source ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-1.5 font-medium text-[#c4d0f0]">
                     Scale: {feedback.scale_source}
                   </span>
                 ) : null}
               </div>
             </div>
 
-            <div className="flex gap-2 border-b border-[#ffffff14]">
+            <div className="flex gap-2 border-b border-white/[0.07]">
               {(
                 [
                   ["video", "Annotated video"],
@@ -653,12 +655,12 @@ export default function TechniquePage() {
                     <img
                       src={annotatedUrl}
                       alt="Shooting technique contact frame overlay"
-                      className="w-full rounded-xl border border-[#ffffff14] bg-black object-contain"
+                      className="w-full rounded-xl border border-white/[0.07] bg-black object-contain"
                     />
                   ) : (
                     <video
                       src={annotatedUrl}
-                      className="w-full rounded-xl border border-[#ffffff14] bg-black"
+                      className="w-full rounded-xl border border-white/[0.07] bg-black"
                       autoPlay
                       muted
                       loop
@@ -667,7 +669,7 @@ export default function TechniquePage() {
                     />
                   )
                 ) : (
-                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#0d0d17] text-[#6b7a99]">
+                  <div className="flex h-64 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.03] text-[#6b7a99]">
                     Annotated output not available
                   </div>
                 )}
@@ -686,10 +688,10 @@ export default function TechniquePage() {
                   <img
                     src={mediaUrl(feedback.contact_frame_url) ?? undefined}
                     alt="Point of contact with pose skeleton and joint angles"
-                    className="w-full rounded-xl border border-[#ffffff14] bg-black object-contain"
+                    className="w-full rounded-xl border border-white/[0.07] bg-black object-contain"
                   />
                 ) : (
-                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#0d0d17] text-[#6b7a99]">
+                  <div className="flex h-64 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.03] text-[#6b7a99]">
                     Contact frame image not available — re-run the analysis to generate it
                   </div>
                 )}
@@ -707,7 +709,7 @@ export default function TechniquePage() {
                     .map((row) => {
                       const ok = row.value != null && isWithinIdeal(row.label, row.value);
                       return (
-                        <div key={row.label} className="rounded-xl border border-[#ffffff14] bg-[#0d0d17] px-4 py-3">
+                        <div key={row.label} className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
                           <p className="text-xs text-[#6b7a99]">{row.label}</p>
                           <p
                             className={`mt-1 text-xl font-semibold tabular-nums ${
