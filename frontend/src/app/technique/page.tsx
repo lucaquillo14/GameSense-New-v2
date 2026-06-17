@@ -13,6 +13,7 @@ import {
   uploadVideo,
 } from "@/lib/api";
 import { getStoredUser } from "@/lib/socialApi";
+import { CountUp } from "@/components/CountUp";
 import { formatDuration, MAX_UPLOAD_MB, validateFileSize } from "@/lib/uploadLimits";
 import {
   AlertCircle,
@@ -156,14 +157,20 @@ function formatMetricValue(label: string, value: number | null): string {
 function ScoreRing({ score }: { score: number }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(Math.max(score / 10, 0), 1);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const progress = mounted ? Math.min(Math.max(score / 10, 0), 1) : 0;
   const offset = circumference * (1 - progress);
-  const color = score >= 7 ? "#10b981" : score >= 4 ? "#f59e0b" : "#ef4444";
+  const color = score >= 7 ? "#22d3ee" : score >= 4 ? "#f59e0b" : "#ef4444";
+  const glow = score >= 7 ? "rgba(34,211,238,0.5)" : score >= 4 ? "rgba(245,158,11,0.45)" : "rgba(239,68,68,0.45)";
 
   return (
     <div className="relative mx-auto h-36 w-36">
       <svg className="h-full w-full -rotate-90" viewBox="0 0 120 120">
-        <circle cx="60" cy="60" r={radius} fill="none" stroke="#ffffff14" strokeWidth="10" />
+        <circle cx="60" cy="60" r={radius} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="10" />
         <circle
           cx="60"
           cy="60"
@@ -174,11 +181,15 @@ function ScoreRing({ score }: { score: number }) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
+          style={{
+            transition: "stroke-dashoffset 1.2s cubic-bezier(0.22,1,0.36,1)",
+            filter: `drop-shadow(0 0 6px ${glow})`,
+          }}
         />
       </svg>
       <div className="absolute inset-0 grid place-items-center">
-        <span className="text-3xl font-semibold text-[#f1f5f9]">{score.toFixed(1)}</span>
-        <span className="mt-10 text-xs text-[#64748b]">/ 10</span>
+        <CountUp className="stat-value text-4xl font-bold text-[#eef2ff]" value={score} decimals={1} />
+        <span className="mt-11 text-xs text-[#6b7a99]">/ 10</span>
       </div>
     </div>
   );
@@ -481,27 +492,33 @@ export default function TechniquePage() {
             <div className="card flex flex-col items-center gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-6">
                 <div className="text-center">
-                  <p className="mb-2 text-sm font-medium text-[#64748b]">Technique score</p>
+                  <p className="data-label mb-2">Technique score</p>
                   <ScoreRing score={feedback.technique_score} />
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-[#ffffff14] bg-[#111118] px-6 py-4">
-                  <Zap className="text-[#3b82f6]" size={28} />
+                <div className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-cyan-500/[0.03] px-6 py-4">
+                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-500/12 text-cyan-300">
+                    <Zap size={24} />
+                  </span>
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-[#64748b]">Shot power</p>
+                    <p className="data-label">Shot power</p>
                     {feedback.shot_power_kmh > 0 ? (
                       <>
-                        <p className="text-4xl font-semibold tabular-nums text-[#f1f5f9]">
-                          {feedback.shot_power_kmh.toFixed(0)}
-                          <span className="ml-1 text-lg font-normal text-[#64748b]">km/h</span>
+                        <p className="flex items-end gap-1">
+                          <CountUp
+                            className="stat-value text-4xl font-bold neon-text-cyan"
+                            value={feedback.shot_power_kmh}
+                            decimals={0}
+                          />
+                          <span className="mb-1 text-lg font-normal text-[#6b7a99]">km/h</span>
                         </p>
                         {feedback.power_rating ? (
-                          <p className="text-sm text-[#64748b]">{feedback.power_rating}</p>
+                          <p className="text-sm text-[#6b7a99]">{feedback.power_rating}</p>
                         ) : null}
                       </>
                     ) : (
                       <>
-                        <p className="text-4xl font-semibold text-[#64748b]">—</p>
-                        <p className="max-w-44 text-xs text-[#64748b]">
+                        <p className="stat-value text-4xl font-bold text-[#3a4560]">—</p>
+                        <p className="max-w-44 text-xs text-[#6b7a99]">
                           Couldn&apos;t track the ball cleanly after impact — a side-on angle and 60 fps give the most
                           reliable speed
                         </p>
@@ -567,10 +584,10 @@ export default function TechniquePage() {
                   key={tab}
                   type="button"
                   onClick={() => setResultsTab(tab)}
-                  className={`-mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`-mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
                     resultsTab === tab
-                      ? "border-[#3b82f6] text-[#f1f5f9]"
-                      : "border-transparent text-[#64748b] hover:text-[#94a3b8]"
+                      ? "border-cyan-400 text-[#eef2ff]"
+                      : "border-transparent text-[#6b7a99] hover:text-[#c4d0f0]"
                   }`}
                 >
                   {label}
