@@ -268,7 +268,11 @@ def _extract_setup_frame(video_id: str, video_path: Path) -> None:
 
 @app.post("/upload-video")
 async def upload_video(file: UploadFile = File(...), authorization: str | None = Header(default=None)):
+    # Uploads require an account — enforced server-side so the limit can't be
+    # bypassed by calling the API directly.
     owner_id = auth.user_id_from_header(authorization)
+    if not owner_id or not auth.get_user_row(owner_id):
+        raise HTTPException(status_code=401, detail="Create an account or sign in to upload a video.")
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".mp4", ".mov"}:
         raise HTTPException(status_code=400, detail="Only .mp4 and .mov files are supported.")

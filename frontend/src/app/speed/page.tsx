@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { getStoredUser } from "@/lib/socialApi";
 import { API_BASE, uploadVideo } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? API_BASE;
@@ -35,6 +36,9 @@ export default function SpeedAnalysisPage() {
   const [busy, setBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
+  useEffect(() => setSignedIn(!!getStoredUser()), []);
 
   async function onFileSelected(next: File | null) {
     setError(null);
@@ -85,6 +89,14 @@ export default function SpeedAnalysisPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (signedIn === false) {
+    return (
+      <AppShell>
+        <SignInToUpload />
+      </AppShell>
+    );
   }
 
   return (
@@ -177,6 +189,31 @@ export default function SpeedAnalysisPage() {
         </p>
       </section>
     </AppShell>
+  );
+}
+
+function SignInToUpload() {
+  return (
+    <section className="analytics-grid hero-glow mx-auto max-w-2xl px-5 py-20 text-center fade-in">
+      <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-[#04121f] shadow-[0_0_28px_rgba(6,182,212,0.45)]">
+        <UploadCloud size={28} />
+      </div>
+      <h1 className="display text-3xl text-[#eef2ff]">Sign in to analyse a clip</h1>
+      <p className="mx-auto mt-3 max-w-sm text-sm text-[#6b7a99]">
+        Create a free account to upload videos, save your results, and climb the leaderboard.
+      </p>
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <Link href="/login?next=/speed" className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-sm">
+          Sign in
+        </Link>
+        <Link
+          href="/login?next=/speed"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#09090f] px-6 py-3 text-sm font-semibold text-[#eef2ff] transition-colors hover:border-cyan-500/40"
+        >
+          Create account
+        </Link>
+      </div>
+    </section>
   );
 }
 

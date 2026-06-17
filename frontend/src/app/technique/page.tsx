@@ -209,9 +209,14 @@ export default function TechniquePage() {
   const [tier, setTier] = useState<string>("free");
   const [downloading, setDownloading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
   // Read membership after mount (localStorage isn't available during SSR).
-  useEffect(() => setTier(getStoredUser()?.tier ?? "free"), []);
+  useEffect(() => {
+    const u = getStoredUser();
+    setTier(u?.tier ?? "free");
+    setSignedIn(!!u);
+  }, []);
   const isPaying = tier === "pro" || tier === "elite";
 
   async function onDownloadReport() {
@@ -376,6 +381,33 @@ export default function TechniquePage() {
 
   const annotatedUrl = mediaUrl(feedback?.annotated_video_url);
   const annotatedIsImage = isImageMediaUrl(feedback?.annotated_video_url);
+
+  if (signedIn === false) {
+    return (
+      <AppShell>
+        <section className="analytics-grid hero-glow mx-auto max-w-2xl px-5 py-20 text-center fade-in">
+          <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-[#04121f] shadow-[0_0_28px_rgba(6,182,212,0.45)]">
+            <Target size={28} />
+          </div>
+          <h1 className="display text-3xl text-[#eef2ff]">Sign in to analyse your technique</h1>
+          <p className="mx-auto mt-3 max-w-sm text-sm text-[#6b7a99]">
+            Create a free account to upload shooting clips, save your reports, and track progress.
+          </p>
+          <div className="mt-8 flex items-center justify-center gap-3">
+            <Link href="/login?next=/technique" className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-sm">
+              Sign in
+            </Link>
+            <Link
+              href="/login?next=/technique"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#09090f] px-6 py-3 text-sm font-semibold text-[#eef2ff] transition-colors hover:border-cyan-500/40"
+            >
+              Create account
+            </Link>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
