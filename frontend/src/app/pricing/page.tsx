@@ -103,81 +103,94 @@ export default function PricingPage() {
             <Loader2 size={20} className="animate-spin text-cyan-500" /> Loading plans…
           </div>
         ) : (
-          <div className="grid items-start gap-5 md:grid-cols-3">
+          <div className="grid items-start gap-6 md:grid-cols-3">
             {plans.map((plan) => {
               const accent = TIER_ACCENT[plan.id] ?? TIER_ACCENT.free;
               const isCurrent = currentTier === plan.id;
               const isPopular = plan.id === "pro";
+              const isElite = plan.id === "elite";
               const isDowngrade = TIER_ORDER[plan.id] < TIER_ORDER[currentTier];
               return (
-                <div
-                  key={plan.id}
-                  className={`card relative flex flex-col p-6 ${accent.ring} ${
-                    isPopular ? "md:-mt-3 md:mb-3" : ""
-                  }`}
-                >
+                <div key={plan.id} className={`relative ${isPopular ? "md:-mt-4 md:mb-4" : ""}`}>
+                  {/* Animated gradient glow border on the popular tier */}
                   {isPopular && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-500 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#04121f] shadow-[0_0_18px_rgba(6,182,212,0.5)]">
-                      Most popular
-                    </span>
+                    <div className="pointer-events-none absolute -inset-px rounded-[1.05rem] bg-[linear-gradient(110deg,#22d3ee,#3b82f6,#8b5cf6,#22d3ee)] bg-[length:220%_auto] opacity-70 blur-[7px] [animation:gradient-pan_6s_linear_infinite]" />
                   )}
 
-                  <div className="mb-4 flex items-center gap-2">
-                    <span
-                      className={`grid h-9 w-9 place-items-center rounded-xl ${
-                        plan.id === "elite"
-                          ? "bg-amber-400/15 text-amber-300"
-                          : plan.id === "pro"
-                            ? "bg-cyan-500/15 text-cyan-300"
-                            : "bg-white/[0.06] text-[#9fb0d0]"
+                  <div className={`card relative flex h-full flex-col overflow-hidden p-6 ${accent.ring}`}>
+                    {/* top accent */}
+                    <div
+                      className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${
+                        isElite ? "via-amber-300/60" : isPopular ? "via-cyan-400/70" : "via-white/15"
                       }`}
-                    >
-                      {accent.icon}
-                    </span>
-                    <span className="font-display text-xl font-bold text-[#eef2ff]">{plan.name}</span>
-                  </div>
+                    />
+                    {/* corner glow */}
+                    <div
+                      className={`pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full blur-3xl ${
+                        isElite ? "bg-amber-400/10" : isPopular ? "bg-cyan-500/12" : "bg-white/[0.03]"
+                      }`}
+                    />
 
-                  <div className="mb-1 flex items-end gap-1">
-                    <span className="stat-value text-4xl font-bold text-[#eef2ff]">
-                      {formatPrice(plan.price_monthly)}
-                    </span>
-                    {plan.price_monthly > 0 && (
-                      <span className="mb-1 text-sm text-[#6b7a99]">/mo</span>
+                    {isPopular && (
+                      <span className="absolute -top-0 right-4 rounded-b-lg bg-cyan-500 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#04121f] shadow-[0_0_18px_rgba(6,182,212,0.5)]">
+                        Most popular
+                      </span>
                     )}
+
+                    <div className="mb-5 flex items-center gap-2.5">
+                      <span
+                        className={`grid h-10 w-10 place-items-center rounded-xl ${
+                          isElite
+                            ? "bg-amber-400/15 text-amber-300"
+                            : isPopular
+                              ? "bg-cyan-500/15 text-cyan-300"
+                              : "bg-white/[0.06] text-[#9fb0d0]"
+                        }`}
+                      >
+                        {accent.icon}
+                      </span>
+                      <span className="font-display text-xl font-bold text-[#eef2ff]">{plan.name}</span>
+                    </div>
+
+                    <div className="mb-1 flex items-end gap-1.5">
+                      <span className="stat-value text-5xl font-bold text-[#eef2ff]">
+                        {formatPrice(plan.price_monthly)}
+                      </span>
+                      {plan.price_monthly > 0 && <span className="mb-1.5 text-sm text-[#6b7a99]">/mo</span>}
+                    </div>
+                    <p className="mb-6 text-sm text-[#6b7a99]">{plan.tagline}</p>
+
+                    <button
+                      type="button"
+                      disabled={isCurrent || checkoutBusy !== null}
+                      onClick={() => choose(plan)}
+                      className={`mb-6 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${accent.cta}`}
+                    >
+                      {checkoutBusy === plan.id ? <Loader2 size={16} className="animate-spin" /> : null}
+                      {isCurrent
+                        ? "Current plan"
+                        : plan.id === "free"
+                          ? "Get started"
+                          : isDowngrade
+                            ? `Switch to ${plan.name}`
+                            : `Upgrade to ${plan.name}`}
+                    </button>
+
+                    <ul className="space-y-3 border-t border-white/[0.06] pt-5">
+                      {plan.highlights.map((h) => (
+                        <li key={h} className="flex items-start gap-2.5 text-sm text-[#c4d0f0]">
+                          <span
+                            className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ${
+                              isElite ? "bg-amber-300/15 text-amber-300" : "bg-cyan-400/15 text-cyan-300"
+                            }`}
+                          >
+                            <Check size={11} strokeWidth={3} />
+                          </span>
+                          {h}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <p className="mb-5 text-sm text-[#6b7a99]">{plan.tagline}</p>
-
-                  <button
-                    type="button"
-                    disabled={isCurrent || checkoutBusy !== null}
-                    onClick={() => choose(plan)}
-                    className={`mb-6 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${accent.cta}`}
-                  >
-                    {checkoutBusy === plan.id ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : null}
-                    {isCurrent
-                      ? "Current plan"
-                      : plan.id === "free"
-                        ? "Get started"
-                        : isDowngrade
-                          ? `Switch to ${plan.name}`
-                          : `Upgrade to ${plan.name}`}
-                  </button>
-
-                  <ul className="space-y-2.5">
-                    {plan.highlights.map((h) => (
-                      <li key={h} className="flex items-start gap-2 text-sm text-[#c4d0f0]">
-                        <Check
-                          size={16}
-                          className={`mt-0.5 shrink-0 ${
-                            plan.id === "elite" ? "text-amber-300" : "text-cyan-400"
-                          }`}
-                        />
-                        {h}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               );
             })}
