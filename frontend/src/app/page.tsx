@@ -14,7 +14,7 @@ import {
   readLocalVideoMeta,
   validateFileSize,
 } from "@/lib/uploadLimits";
-import { AlertCircle, ArrowRight, Film, Loader2, Maximize2, Target, Timer, UploadCloud } from "lucide-react";
+import { Activity, AlertCircle, ArrowRight, Film, Gauge, Loader2, Maximize2, Route, Target, Timer, UploadCloud, Zap } from "lucide-react";
 import Link from "next/link";
 
 export default function UploadPage() {
@@ -87,15 +87,28 @@ export default function UploadPage() {
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 glow-pulse" />
             AI sprint &amp; technique analysis
           </div>
-          <h1 className="display text-5xl text-[#eef2ff] sm:text-[3.75rem]">
+          <h1 className="display text-6xl text-[#eef2ff] sm:text-[4.5rem]">
             Measure your game
             <br />
             in <span className="gradient-text">real numbers</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-[#6b7a99]">
+          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-[#8b95a7]">
             Drop a clip to track players and measure sprint speed, distance, and technique — then
             climb the leaderboard.
           </p>
+
+          {/* Trust strip */}
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs font-medium text-[#6b7a99]">
+            <span className="inline-flex items-center gap-1.5">
+              <Gauge size={13} className="text-cyan-400" /> Sprint speed &amp; distance
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Target size={13} className="text-cyan-400" /> Shot power
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Activity size={13} className="text-cyan-400" /> Technique scoring
+            </span>
+          </div>
         </div>
 
         {/* ── Upload card ──────────────────────────────────────── */}
@@ -182,8 +195,55 @@ export default function UploadPage() {
           FPS is detected after upload. Clips longer than {MAX_VIDEO_DURATION_S} seconds are
           rejected before upload.
         </p>
+
+        {/* ── How it works ─────────────────────────────────────── */}
+        <div className="mt-16 grid gap-4 sm:grid-cols-3">
+          <StepCard
+            step="01"
+            icon={<UploadCloud size={20} />}
+            title="Upload a clip"
+            body="Drop an MP4 or MOV of your match or shooting session — no setup required."
+          />
+          <StepCard
+            step="02"
+            icon={<Route size={20} />}
+            title="AI tracks the play"
+            body="Players and the ball are detected and tracked frame-by-frame, fully automatically."
+          />
+          <StepCard
+            step="03"
+            icon={<Zap size={20} />}
+            title="Get real metrics"
+            body="Sprint speed, distance, shot power and technique — then climb the leaderboard."
+          />
+        </div>
       </section>
     </AppShell>
+  );
+}
+
+function StepCard({
+  step,
+  icon,
+  title,
+  body,
+}: {
+  step: string;
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="card card-hover p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-cyan-500/12 text-cyan-300">
+          {icon}
+        </span>
+        <span className="stat-value text-2xl text-white/10">{step}</span>
+      </div>
+      <h3 className="font-display text-lg font-semibold text-[#eef2ff]">{title}</h3>
+      <p className="mt-1.5 text-sm leading-relaxed text-[#6b7a99]">{body}</p>
+    </div>
   );
 }
 

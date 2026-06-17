@@ -59,7 +59,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <main className="min-h-screen bg-[#04040a] pb-20 sm:pb-0">
+    <main className="relative min-h-screen bg-transparent pb-20 sm:pb-0">
+      {/* ── Ambient background (site-wide) ──────────────────── */}
+      <div className="app-bg" aria-hidden="true">
+        <span className="app-bg__orb app-bg__orb--cyan" />
+        <span className="app-bg__orb app-bg__orb--violet" />
+        <span className="app-bg__orb app-bg__orb--blue" />
+      </div>
+
       {/* ── Header ──────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#04040a]/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3.5">
