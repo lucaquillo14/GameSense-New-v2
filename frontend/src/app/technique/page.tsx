@@ -17,13 +17,17 @@ import { CountUp } from "@/components/CountUp";
 import { formatDuration, MAX_UPLOAD_MB, validateFileSize } from "@/lib/uploadLimits";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
+  CheckCircle2,
   Crown,
   Download,
   FileText,
   Loader2,
+  Sparkles,
   Target,
   UploadCloud,
+  XCircle,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -130,6 +134,21 @@ function feedbackBorderClass(text: string): string {
   }
   return "border-l-amber-500";
 }
+
+type Severity = "good" | "warning" | "critical";
+
+function feedbackSeverity(text: string): Severity {
+  const cls = feedbackBorderClass(text);
+  if (cls.includes("10b981")) return "good";
+  if (cls.includes("red")) return "critical";
+  return "warning";
+}
+
+const SEVERITY_STYLE: Record<Severity, { icon: typeof CheckCircle2; chip: string; bar: string }> = {
+  good: { icon: CheckCircle2, chip: "bg-emerald-400/15 text-emerald-300", bar: "border-l-emerald-400" },
+  warning: { icon: AlertTriangle, chip: "bg-amber-400/15 text-amber-300", bar: "border-l-amber-400" },
+  critical: { icon: XCircle, chip: "bg-red-500/15 text-red-300", bar: "border-l-red-500" },
+};
 
 function feedbackTitle(text: string): string {
   const lower = text.toLowerCase();
@@ -706,50 +725,67 @@ export default function TechniquePage() {
             )}
 
             {resultsTab === "feedback" && (
-              <div className="grid gap-8 lg:grid-cols-2">
-                <div className="space-y-3">
-                  <h2 className="text-xl font-semibold text-[#eef2ff]">Feedback</h2>
+              <div className="grid gap-8 lg:grid-cols-5">
+                {/* Coaching feedback */}
+                <div className="space-y-3 lg:col-span-3">
+                  <h2 className="data-label flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-cyan-400" /> Coaching feedback
+                  </h2>
                   <ol className="space-y-3">
-                    {feedback.feedback_points.map((point, index) => (
-                      <li
-                        key={`${index}-${point.slice(0, 24)}`}
-                        className={`rounded-lg border border-[#ffffff14] border-l-4 bg-[#0d0d17] p-4 ${feedbackBorderClass(point)}`}
-                      >
-                        <p className="font-medium text-[#eef2ff]">{feedbackTitle(point)}</p>
-                        <p className="mt-1 text-sm leading-relaxed text-[#94a3b8]">{point}</p>
-                      </li>
-                    ))}
+                    {feedback.feedback_points.map((point, index) => {
+                      const sev = feedbackSeverity(point);
+                      const style = SEVERITY_STYLE[sev];
+                      const Icon = style.icon;
+                      return (
+                        <li
+                          key={`${index}-${point.slice(0, 24)}`}
+                          className={`card flex gap-3 border-l-4 p-4 ${style.bar}`}
+                        >
+                          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${style.chip}`}>
+                            <Icon size={16} />
+                          </span>
+                          <div>
+                            <p className="font-display font-semibold text-[#eef2ff]">{feedbackTitle(point)}</p>
+                            <p className="mt-1 text-sm leading-relaxed text-[#94a3b8]">{point}</p>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
 
-                <div className="space-y-3">
-                  <h2 className="text-xl font-semibold text-[#eef2ff]">Measurements</h2>
-                  <div className="overflow-hidden rounded-xl border border-[#ffffff14]">
-                    <table className="w-full text-sm">
-                      <thead className="bg-[#0d0d17] text-left text-[#6b7a99]">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">Metric</th>
-                          <th className="px-4 py-3 font-medium">Measured</th>
-                          <th className="px-4 py-3 font-medium">Ideal</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metricsTable.map((row) => {
-                          const ok = row.value != null && isWithinIdeal(row.label, row.value);
-                          return (
-                            <tr key={row.label} className="border-t border-[#ffffff14]">
-                              <td className="px-4 py-3 text-[#eef2ff]">{row.label}</td>
-                              <td
-                                className={`px-4 py-3 tabular-nums ${row.value == null ? "text-[#6b7a99]" : ok ? "text-[#10b981]" : "text-red-400"}`}
-                              >
-                                {formatMetricValue(row.label, row.value)}
-                              </td>
-                              <td className="px-4 py-3 text-[#6b7a99]">{IDEAL_RANGES[row.label]}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                {/* Measurements */}
+                <div className="space-y-3 lg:col-span-2">
+                  <h2 className="data-label flex items-center gap-1.5">
+                    <Target size={13} className="text-cyan-400" /> Measurements
+                  </h2>
+                  <div className="space-y-2">
+                    {metricsTable.map((row) => {
+                      const has = row.value != null;
+                      const ok = row.value != null && isWithinIdeal(row.label, row.value);
+                      return (
+                        <div key={row.label} className="card flex items-center justify-between gap-3 p-3.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-[#eef2ff]">{row.label}</p>
+                            <p className="text-[11px] text-[#6b7a99]">ideal {IDEAL_RANGES[row.label]}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={`stat-value text-base ${
+                                !has ? "text-[#3a4560]" : ok ? "text-emerald-300" : "text-red-300"
+                              }`}
+                            >
+                              {formatMetricValue(row.label, row.value)}
+                            </span>
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                !has ? "bg-[#3a4560]" : ok ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" : "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]"
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

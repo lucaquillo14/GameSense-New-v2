@@ -273,6 +273,42 @@ def _open_writer(path: Path, fps: float, size: tuple[int, int]) -> cv2.VideoWrit
     raise ShootingTechniquePipelineError("Could not create annotated output video.")
 
 
+def _ensure_browser_playable(path: Path) -> None:
+    """Re-encode the annotated clip to H.264 + faststart so browsers can play it.
+
+    The pip OpenCV build usually lacks an H.264 encoder and falls back to mp4v,
+    which most browsers won't decode. ffmpeg (present in the Docker image)
+    transcodes to libx264. No-op if ffmpeg is unavailable or the file is missing.
+    """
+    import shutil
+    import subprocess
+
+    if not path.exists() or shutil.which("ffmpeg") is None:
+        return
+    tmp = path.with_name(path.stem + "_h264.mp4")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(path),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                "-an", str(tmp),
+            ],
+            check=True,
+            timeout=180,
+        )
+        if tmp.exists() and tmp.stat().st_size > 0:
+            tmp.replace(path)
+    except Exception as exc:  # keep the original file on any failure
+        print(f"[GameSense] annotated video transcode skipped: {exc}")
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 # ------------------------------------------------------------- parallel infer
 def _detect_batch(detector, items: list[tuple[int, np.ndarray]],
                   model_id: Optional[str], workers: int) -> dict[int, list]:
@@ -609,6 +645,10 @@ def run_shooting_technique_analysis(
                     writer.write(replay)
         finally:
             writer.release()
+
+        # Transcode to H.264 so the <video> tag actually plays in the browser.
+        _notify(progress, "render", 97, "Finalising annotated video")
+        _ensure_browser_playable(annotated_path)
 
         # annotated contact-frame still (skeleton + angle labels at impact)
         contact_url = None
