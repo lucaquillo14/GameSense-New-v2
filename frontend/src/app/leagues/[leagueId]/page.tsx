@@ -88,12 +88,12 @@ export default function LeagueDetailPage() {
   return (
     <AppShell>
       <section className="mx-auto max-w-4xl px-5 py-12 fade-in">
-        <Link href="/leagues" className="mb-6 inline-flex items-center gap-1.5 text-sm text-[#64748b] hover:text-[#f1f5f9]">
+        <Link href="/leagues" className="mb-6 inline-flex items-center gap-1.5 text-sm text-[#6b7a99] hover:text-[#eef2ff]">
           <ArrowLeft size={15} /> All leagues
         </Link>
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-[#64748b]">
+          <div className="flex items-center justify-center gap-2 py-20 text-[#6b7a99]">
             <Loader2 size={20} className="animate-spin" /> Loading league…
           </div>
         ) : error ? (
@@ -105,8 +105,8 @@ export default function LeagueDetailPage() {
           <>
             <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-[#f1f5f9]">{league.name}</h1>
-                <p className="mt-1 text-sm text-[#64748b]">
+                <h1 className="text-3xl font-semibold tracking-tight text-[#eef2ff]">{league.name}</h1>
+                <p className="mt-1 text-sm text-[#6b7a99]">
                   {league.member_count} member{league.member_count === 1 ? "" : "s"} competing
                 </p>
               </div>
@@ -115,15 +115,15 @@ export default function LeagueDetailPage() {
                   type="button"
                   onClick={copyCode}
                   title="Copy invite code"
-                  className="flex items-center gap-2 rounded-lg border border-[#ffffff14] bg-[#111118] px-3 py-2 text-sm transition-colors hover:border-[#3b82f6]/40"
+                  className="flex items-center gap-2 rounded-lg border border-[#ffffff14] bg-[#0d0d17] px-3 py-2 text-sm transition-colors hover:border-[#06b6d4]/40"
                 >
-                  {copied ? <Check size={15} className="text-green-400" /> : <Copy size={15} className="text-[#3b82f6]" />}
-                  <span className="font-mono tracking-widest text-[#f1f5f9]">{league.invite_code}</span>
+                  {copied ? <Check size={15} className="text-green-400" /> : <Copy size={15} className="text-[#06b6d4]" />}
+                  <span className="font-mono tracking-widest text-[#eef2ff]">{league.invite_code}</span>
                 </button>
                 <button
                   type="button"
                   onClick={copyLink}
-                  className="flex items-center gap-2 rounded-lg bg-[#3b82f6] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2563eb]"
+                  className="flex items-center gap-2 rounded-lg bg-[#06b6d4] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#0891b2]"
                 >
                   {linkCopied ? <Check size={15} /> : <Link2 size={15} />}
                   {linkCopied ? "Link copied" : "Share link"}
@@ -132,15 +132,15 @@ export default function LeagueDetailPage() {
                   type="button"
                   onClick={onLeave}
                   title="Leave league"
-                  className="rounded-lg border border-[#ffffff14] bg-[#111118] p-2 text-[#94a3b8] transition-colors hover:text-red-300"
+                  className="rounded-lg border border-[#ffffff14] bg-[#0d0d17] p-2 text-[#94a3b8] transition-colors hover:text-red-300"
                 >
                   <LogOut size={16} />
                 </button>
               </div>
             </div>
 
-            <p className="mb-6 rounded-lg border border-[#ffffff14] bg-[#111118] px-4 py-3 text-sm text-[#94a3b8]">
-              Share the link or code <span className="font-mono font-semibold text-[#3b82f6]">{league.invite_code}</span>{" "}
+            <p className="mb-6 rounded-lg border border-[#ffffff14] bg-[#0d0d17] px-4 py-3 text-sm text-[#94a3b8]">
+              Share the link or code <span className="font-mono font-semibold text-[#06b6d4]">{league.invite_code}</span>{" "}
               with friends — anyone who opens the link can join and compete.
             </p>
 

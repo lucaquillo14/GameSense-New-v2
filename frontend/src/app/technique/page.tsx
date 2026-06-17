@@ -381,12 +381,12 @@ export default function TechniquePage() {
     <AppShell>
       <section className="mx-auto max-w-6xl px-5 py-10 fade-in">
         <div className="mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-[#64748b] hover:text-[#f1f5f9]">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-[#6b7a99] hover:text-[#eef2ff]">
             <ArrowLeft size={16} />
             Back to match analysis
           </Link>
-          <h1 className="mt-4 text-3xl font-semibold text-[#f1f5f9] sm:text-4xl">Shooting technique analysis</h1>
-          <p className="mt-2 max-w-2xl text-[#64748b]">
+          <h1 className="mt-4 text-3xl font-semibold text-[#eef2ff] sm:text-4xl">Shooting technique analysis</h1>
+          <p className="mt-2 max-w-2xl text-[#6b7a99]">
             Upload a clip of you shooting at goal — side or 45° angle works best. RF-DETR detects player and ball,
             MediaPipe tracks pose, and you get an annotated video with biomechanics feedback. Up to{" "}
             {MAX_TECHNIQUE_DURATION_S} seconds.
@@ -395,14 +395,14 @@ export default function TechniquePage() {
 
         {view === "upload" && (
           <div className="card p-6">
-            <label className="dropzone-hover group flex min-h-64 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#ffffff14] bg-[#0a0a0f] px-6 py-10 text-center">
-              <span className="grid h-14 w-14 place-items-center rounded-xl bg-[#2563eb] text-white shadow-[0_0_28px_rgba(37,99,235,0.35)]">
+            <label className="dropzone-hover group flex min-h-64 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#ffffff14] bg-[#09090f] px-6 py-10 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-xl bg-[#0891b2] text-white shadow-[0_0_28px_rgba(37,99,235,0.35)]">
                 {checking ? <Loader2 size={28} className="animate-spin" /> : <UploadCloud size={28} />}
               </span>
-              <span className="mt-4 text-lg font-semibold text-[#f1f5f9]">
+              <span className="mt-4 text-lg font-semibold text-[#eef2ff]">
                 {checking ? "Checking video…" : file ? file.name : "Upload your shooting clip"}
               </span>
-              <span className="mt-2 text-sm text-[#64748b]">
+              <span className="mt-2 text-sm text-[#6b7a99]">
                 MP4 or MOV · up to {MAX_UPLOAD_MB} MB · max {MAX_TECHNIQUE_DURATION_S}s
               </span>
               <input
@@ -414,7 +414,7 @@ export default function TechniquePage() {
             </label>
 
             {localMeta && (
-              <p className="mt-3 text-sm text-[#64748b]">
+              <p className="mt-3 text-sm text-[#6b7a99]">
                 {localMeta.sizeMb} MB · {formatDuration(localMeta.durationS)} · {localMeta.width}×{localMeta.height}
               </p>
             )}
@@ -441,15 +441,15 @@ export default function TechniquePage() {
         {view === "processing" && (
           <div className="card p-6">
             <div className="flex items-center gap-3">
-              <Loader2 className="animate-spin text-[#3b82f6]" size={22} />
+              <Loader2 className="animate-spin text-[#06b6d4]" size={22} />
               <div>
-                <p className="font-medium text-[#f1f5f9]">{progress.message}</p>
-                <p className="text-sm text-[#64748b]">Detecting objects, tracking pose, and rendering annotated output…</p>
+                <p className="font-medium text-[#eef2ff]">{progress.message}</p>
+                <p className="text-sm text-[#6b7a99]">Detecting objects, tracking pose, and rendering annotated output…</p>
               </div>
             </div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#ffffff14]">
               <div
-                className="h-full rounded-full bg-[#3b82f6] transition-all duration-500"
+                className="h-full rounded-full bg-[#06b6d4] transition-all duration-500"
                 style={{ width: `${Math.max(progress.percent, 4)}%` }}
               />
             </div>
@@ -529,12 +529,12 @@ export default function TechniquePage() {
               </div>
               <div className="flex flex-wrap justify-center gap-2 text-xs">
                 {feedback.kicking_foot ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
                     {feedback.kicking_foot === "left" ? "Left" : "Right"}-footed strike
                   </span>
                 ) : null}
                 {feedback.shot_distance_m && feedback.shot_distance_m > 0 ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
                     ~{feedback.shot_distance_m.toFixed(1)} m from goal
                   </span>
                 ) : null}
@@ -555,17 +555,17 @@ export default function TechniquePage() {
                   </span>
                 ) : null}
                 {feedback.contact_frame_id != null ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
                     Contact at frame {feedback.contact_frame_id}
                   </span>
                 ) : null}
                 {feedback.confidence > 0 ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
                     Confidence {(feedback.confidence * 100).toFixed(0)}%
                   </span>
                 ) : null}
                 {feedback.scale_source ? (
-                  <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-[#94a3b8]">
+                  <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-[#94a3b8]">
                     Scale: {feedback.scale_source}
                   </span>
                 ) : null}
@@ -616,12 +616,12 @@ export default function TechniquePage() {
                     />
                   )
                 ) : (
-                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#111118] text-[#64748b]">
+                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#0d0d17] text-[#6b7a99]">
                     Annotated output not available
                   </div>
                 )}
                 {!annotatedIsImage && annotatedUrl && (
-                  <p className="text-center text-xs text-[#64748b]">
+                  <p className="text-center text-xs text-[#6b7a99]">
                     Skeleton, phase bar and shot power overlays, then a 1/3x slow-motion replay of the strike and a
                     summary card. Full feedback lives in the Feedback &amp; metrics tab.
                   </p>
@@ -638,11 +638,11 @@ export default function TechniquePage() {
                     className="w-full rounded-xl border border-[#ffffff14] bg-black object-contain"
                   />
                 ) : (
-                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#111118] text-[#64748b]">
+                  <div className="flex h-64 items-center justify-center rounded-xl border border-[#ffffff14] bg-[#0d0d17] text-[#6b7a99]">
                     Contact frame image not available — re-run the analysis to generate it
                   </div>
                 )}
-                <p className="text-center text-xs text-[#64748b]">
+                <p className="text-center text-xs text-[#6b7a99]">
                   The exact frame of ball contact{feedback.contact_frame_id != null ? ` (frame ${feedback.contact_frame_id})` : ""} with
                   skeleton and joint angles
                 </p>
@@ -656,16 +656,16 @@ export default function TechniquePage() {
                     .map((row) => {
                       const ok = row.value != null && isWithinIdeal(row.label, row.value);
                       return (
-                        <div key={row.label} className="rounded-xl border border-[#ffffff14] bg-[#111118] px-4 py-3">
-                          <p className="text-xs text-[#64748b]">{row.label}</p>
+                        <div key={row.label} className="rounded-xl border border-[#ffffff14] bg-[#0d0d17] px-4 py-3">
+                          <p className="text-xs text-[#6b7a99]">{row.label}</p>
                           <p
                             className={`mt-1 text-xl font-semibold tabular-nums ${
-                              row.value == null ? "text-[#64748b]" : ok ? "text-[#10b981]" : "text-red-400"
+                              row.value == null ? "text-[#6b7a99]" : ok ? "text-[#10b981]" : "text-red-400"
                             }`}
                           >
                             {formatMetricValue(row.label, row.value)}
                           </p>
-                          <p className="text-xs text-[#64748b]">ideal {IDEAL_RANGES[row.label]}</p>
+                          <p className="text-xs text-[#6b7a99]">ideal {IDEAL_RANGES[row.label]}</p>
                         </div>
                       );
                     })}
@@ -676,14 +676,14 @@ export default function TechniquePage() {
             {resultsTab === "feedback" && (
               <div className="grid gap-8 lg:grid-cols-2">
                 <div className="space-y-3">
-                  <h2 className="text-xl font-semibold text-[#f1f5f9]">Feedback</h2>
+                  <h2 className="text-xl font-semibold text-[#eef2ff]">Feedback</h2>
                   <ol className="space-y-3">
                     {feedback.feedback_points.map((point, index) => (
                       <li
                         key={`${index}-${point.slice(0, 24)}`}
-                        className={`rounded-lg border border-[#ffffff14] border-l-4 bg-[#111118] p-4 ${feedbackBorderClass(point)}`}
+                        className={`rounded-lg border border-[#ffffff14] border-l-4 bg-[#0d0d17] p-4 ${feedbackBorderClass(point)}`}
                       >
-                        <p className="font-medium text-[#f1f5f9]">{feedbackTitle(point)}</p>
+                        <p className="font-medium text-[#eef2ff]">{feedbackTitle(point)}</p>
                         <p className="mt-1 text-sm leading-relaxed text-[#94a3b8]">{point}</p>
                       </li>
                     ))}
@@ -691,10 +691,10 @@ export default function TechniquePage() {
                 </div>
 
                 <div className="space-y-3">
-                  <h2 className="text-xl font-semibold text-[#f1f5f9]">Measurements</h2>
+                  <h2 className="text-xl font-semibold text-[#eef2ff]">Measurements</h2>
                   <div className="overflow-hidden rounded-xl border border-[#ffffff14]">
                     <table className="w-full text-sm">
-                      <thead className="bg-[#111118] text-left text-[#64748b]">
+                      <thead className="bg-[#0d0d17] text-left text-[#6b7a99]">
                         <tr>
                           <th className="px-4 py-3 font-medium">Metric</th>
                           <th className="px-4 py-3 font-medium">Measured</th>
@@ -706,13 +706,13 @@ export default function TechniquePage() {
                           const ok = row.value != null && isWithinIdeal(row.label, row.value);
                           return (
                             <tr key={row.label} className="border-t border-[#ffffff14]">
-                              <td className="px-4 py-3 text-[#f1f5f9]">{row.label}</td>
+                              <td className="px-4 py-3 text-[#eef2ff]">{row.label}</td>
                               <td
-                                className={`px-4 py-3 tabular-nums ${row.value == null ? "text-[#64748b]" : ok ? "text-[#10b981]" : "text-red-400"}`}
+                                className={`px-4 py-3 tabular-nums ${row.value == null ? "text-[#6b7a99]" : ok ? "text-[#10b981]" : "text-red-400"}`}
                               >
                                 {formatMetricValue(row.label, row.value)}
                               </td>
-                              <td className="px-4 py-3 text-[#64748b]">{IDEAL_RANGES[row.label]}</td>
+                              <td className="px-4 py-3 text-[#6b7a99]">{IDEAL_RANGES[row.label]}</td>
                             </tr>
                           );
                         })}

@@ -51,26 +51,26 @@ export default function JoinLeaguePage() {
     <AppShell>
       <section className="mx-auto max-w-md px-5 py-20 text-center fade-in">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-[#64748b]">
+          <div className="flex items-center justify-center gap-2 py-10 text-[#6b7a99]">
             <Loader2 size={20} className="animate-spin" /> Loading invite…
           </div>
         ) : error && !preview ? (
           <>
             <AlertCircle size={36} className="mx-auto mb-4 text-red-300" />
-            <h1 className="text-2xl font-semibold text-[#f1f5f9]">Invite not found</h1>
-            <p className="mt-2 text-sm text-[#64748b]">{error}</p>
+            <h1 className="text-2xl font-semibold text-[#eef2ff]">Invite not found</h1>
+            <p className="mt-2 text-sm text-[#6b7a99]">{error}</p>
             <Link href="/leagues" className="btn-primary mt-6 inline-flex px-5 py-2.5">
               Go to leagues
             </Link>
           </>
         ) : preview ? (
           <>
-            <span className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-xl bg-[#3b82f6] text-white">
+            <span className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-xl bg-[#06b6d4] text-white">
               <Trophy size={26} />
             </span>
-            <p className="text-sm text-[#64748b]">You&apos;ve been invited to join</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[#f1f5f9]">{preview.name}</h1>
-            <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-[#64748b]">
+            <p className="text-sm text-[#6b7a99]">You&apos;ve been invited to join</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[#eef2ff]">{preview.name}</h1>
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-[#6b7a99]">
               <Users size={15} /> {preview.member_count} member{preview.member_count === 1 ? "" : "s"} competing
             </p>
 
@@ -93,7 +93,7 @@ export default function JoinLeaguePage() {
               </button>
             ) : (
               <>
-                <p className="mt-6 text-sm text-[#64748b]">Sign in to join this league.</p>
+                <p className="mt-6 text-sm text-[#6b7a99]">Sign in to join this league.</p>
                 <Link
                   href={`/login?next=${encodeURIComponent(`/join/${code}`)}`}
                   className="btn-primary mt-3 inline-flex w-full items-center justify-center gap-2 px-5 py-3"

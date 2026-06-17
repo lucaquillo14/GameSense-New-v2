@@ -178,12 +178,12 @@ export default function SetupPage() {
       <section className="mx-auto max-w-7xl px-5 py-7">
         <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1.5 text-sm text-[#64748b]">
-              <Target size={15} className="text-[#3b82f6]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1.5 text-sm text-[#6b7a99]">
+              <Target size={15} className="text-[#06b6d4]" />
               Player selection
             </div>
-            <h1 className="mt-3 text-3xl font-semibold text-[#f1f5f9]">Select your target player</h1>
-            <p className="mt-2 max-w-3xl text-sm text-[#64748b]">
+            <h1 className="mt-3 text-3xl font-semibold text-[#eef2ff]">Select your target player</h1>
+            <p className="mt-2 max-w-3xl text-sm text-[#6b7a99]">
               Boxes are coloured by team. Click a player to highlight them, then mark the 4 corners of the goal
               frame — its known size (7.32 × 2.44 m) gives an accurate speed scale even when the whole pitch
               is not in view.
@@ -263,7 +263,7 @@ export default function SetupPage() {
                     value={playerHeightCm}
                     onChange={(event) => setPlayerHeightCm(event.target.value)}
                     placeholder="e.g. 178"
-                    className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-[#3b82f6] focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-[#06b6d4] focus:outline-none"
                   />
                   <p className="mt-1 text-[11px] leading-4 text-slate-500">
                     Used only if the goal/pitch isn&apos;t marked — turns the scale from a
@@ -306,17 +306,17 @@ export default function SetupPage() {
               <div className="card aspect-video overflow-hidden p-0">
                 <div className="grid h-full place-items-center p-8 text-center">
                   <div className="mb-4 h-40 w-full max-w-xl animate-pulse rounded-lg bg-[#ffffff08]" />
-                  <Loader2 className="mb-3 animate-spin text-[#3b82f6]" size={28} />
-                  <p className="text-sm text-[#f1f5f9]">{prepareMessage}</p>
+                  <Loader2 className="mb-3 animate-spin text-[#06b6d4]" size={28} />
+                  <p className="text-sm text-[#eef2ff]">{prepareMessage}</p>
                   {setupProgress && (
                     <div className="mt-3 w-full max-w-xl">
                       <div className="h-2 overflow-hidden rounded-full bg-[#ffffff14]">
                         <div
-                          className="h-full rounded-full bg-[#3b82f6] transition-all duration-500"
+                          className="h-full rounded-full bg-[#06b6d4] transition-all duration-500"
                           style={{ width: `${Math.max(setupProgress.percent, 4)}%` }}
                         />
                       </div>
-                      <p className="mt-1.5 text-xs text-[#64748b]">{setupProgress.percent}%</p>
+                      <p className="mt-1.5 text-xs text-[#6b7a99]">{setupProgress.percent}%</p>
                     </div>
                   )}
                 </div>
@@ -324,15 +324,15 @@ export default function SetupPage() {
             ) : sourceUrl ? (
               <>
               {detectingPlayers && detections.length === 0 && (
-                <div className="mb-3 rounded-lg border border-[#ffffff14] bg-[#111118] px-4 py-3 text-sm text-[#64748b]">
+                <div className="mb-3 rounded-lg border border-[#ffffff14] bg-[#0d0d17] px-4 py-3 text-sm text-[#6b7a99]">
                   <div className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin text-[#3b82f6]" />
+                    <Loader2 size={16} className="animate-spin text-[#06b6d4]" />
                     {setupProgress ? setupProgress.message : "Detecting players…"}
                   </div>
                   {setupProgress && (
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#ffffff14]">
                       <div
-                        className="h-full rounded-full bg-[#3b82f6] transition-all duration-500"
+                        className="h-full rounded-full bg-[#06b6d4] transition-all duration-500"
                         style={{ width: `${Math.max(setupProgress.percent, 4)}%` }}
                       />
                     </div>
@@ -360,7 +360,7 @@ export default function SetupPage() {
               </>
             ) : (
               <div className="card grid aspect-video place-items-center">
-                <Loader2 className="animate-spin text-[#3b82f6]" />
+                <Loader2 className="animate-spin text-[#06b6d4]" />
               </div>
             )}
             {error && (
@@ -435,7 +435,7 @@ function StatusRow({ label, value, done }: { label: string; value: string; done:
 
 function MetaPill({ label }: { label: string }) {
   return (
-    <span className="rounded-full border border-[#ffffff14] bg-[#111118] px-3 py-1 text-xs text-[#f1f5f9]">
+    <span className="rounded-full border border-[#ffffff14] bg-[#0d0d17] px-3 py-1 text-xs text-[#eef2ff]">
       {label}
     </span>
   );
