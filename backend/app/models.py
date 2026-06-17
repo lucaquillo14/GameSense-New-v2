@@ -219,3 +219,6 @@ class VideoResult(BaseModel):
     assets: ResultAssets | None = None
     warnings: list[str] = []
     progress: dict | None = None
+    # Membership-gated features the owner's tier does not include (e.g.
+    # "heatmaps"). The frontend uses this to render upgrade prompts.
+    locked_features: list[str] = []

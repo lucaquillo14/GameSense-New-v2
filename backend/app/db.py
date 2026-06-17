@@ -106,6 +106,50 @@ CREATE TABLE IF NOT EXISTS follows (
     FOREIGN KEY (following_id) REFERENCES users (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_follows_following ON follows (following_id);
+
+-- One row per user describing their current membership. Created lazily the
+-- first time a user's subscription is read (defaults to the free tier).
+CREATE TABLE IF NOT EXISTS subscriptions (
+    user_id              TEXT PRIMARY KEY,
+    tier                 TEXT NOT NULL DEFAULT 'free',
+    status               TEXT NOT NULL DEFAULT 'active',
+    stripe_customer_id   TEXT,
+    stripe_subscription_id TEXT,
+    current_period_end   TEXT,
+    cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+    updated_at           TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions (stripe_customer_id);
+
+-- One row per analysis run, used for usage metering. Weekly/monthly limits are
+-- enforced by counting rows inside a rolling time window, so resets are
+-- automatic (no scheduled job needed).
+CREATE TABLE IF NOT EXISTS analysis_usage (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    video_id   TEXT,
+    mode       TEXT,
+    category   TEXT NOT NULL,   -- 'sprint' | 'technique'
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_usage_user_time ON analysis_usage (user_id, created_at);
+
+-- Billing history, populated from Stripe invoice webhooks.
+CREATE TABLE IF NOT EXISTS billing_events (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    amount      INTEGER NOT NULL DEFAULT 0,   -- in the currency's minor unit (cents)
+    currency    TEXT NOT NULL DEFAULT 'usd',
+    status      TEXT,
+    description TEXT,
+    invoice_url TEXT,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_billing_user ON billing_events (user_id, created_at);
 """
 
 

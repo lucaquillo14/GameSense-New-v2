@@ -163,6 +163,7 @@ export type VideoResult = {
     touch_heatmap?: string;
   } | null;
   warnings: string[];
+  locked_features?: string[];
   progress?: {
     stage: string;
     percent: number;
@@ -306,10 +307,14 @@ export async function processVideo(
   mode: AnalysisMode = "max_speed",
   playerHeightCm?: number | null,
 ): Promise<void> {
+  const token = typeof window !== "undefined" ? window.localStorage.getItem("gamesense_token") : null;
   await parseResponse(
     await fetch(`${API_BASE}/process-video`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         video_id: videoId,
         mode,

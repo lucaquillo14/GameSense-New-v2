@@ -111,7 +111,19 @@ def get_user_row(user_id: str) -> Optional[dict]:
             (user_id,),
         )
         row = cur.fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    user = dict(row)
+    # Attach membership tier + badge so every authenticated payload carries it.
+    try:
+        from app.services import subscriptions
+
+        user["tier"] = subscriptions.effective_tier(user_id)
+        user["badge"] = subscriptions.tier_badge(user_id)
+    except Exception:
+        user["tier"] = "free"
+        user["badge"] = None
+    return user
 
 
 def current_user(authorization: Optional[str] = Header(default=None)) -> dict:

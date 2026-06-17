@@ -136,12 +136,17 @@ _LEADERBOARD_SQL = """
         COALESCE(SUM(up.points), 0)        AS total_points,
         COALESCE(MAX(up.max_speed_kmh), 0) AS best_speed_kmh,
         COALESCE(MAX(up.shot_power_kmh), 0) AS best_power_kmh,
-        COALESCE(MAX(up.technique_score), 0) AS best_technique
+        COALESCE(MAX(up.technique_score), 0) AS best_technique,
+        s.tier AS tier
     FROM users u
     LEFT JOIN uploads up ON up.user_id = u.id
+    LEFT JOIN subscriptions s ON s.user_id = u.id
     {where}
     GROUP BY u.id
 """
+
+# Map a stored tier onto the public badge id shown on the leaderboard.
+_TIER_BADGE = {"pro": "pro", "elite": "elite"}
 
 _SORT_COLUMNS = {
     "points": "total_points",
@@ -157,6 +162,7 @@ def _rank_rows(rows: list[dict], sort_key: str) -> list[dict]:
     rows.sort(key=lambda r: (r[col], r["total_points"]), reverse=True)
     for i, r in enumerate(rows, start=1):
         r["rank"] = i
+        r["badge"] = _TIER_BADGE.get((r.pop("tier", None) or "free"))
     return rows
 
 

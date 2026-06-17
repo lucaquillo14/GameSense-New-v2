@@ -2,7 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { getHistory, getStoredUser, type HistoryItem } from "@/lib/socialApi";
-import { AlertCircle, ArrowRight, Clock, Gauge, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, Clock, Crown, Gauge, Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -29,6 +29,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [signedOut, setSignedOut] = useState(false);
+  const [locked, setLocked] = useState(false);
 
   useEffect(() => {
     if (!getStoredUser()) { setSignedOut(true); setLoading(false); return; }
@@ -37,10 +38,31 @@ export default function HistoryPage() {
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "Failed to load history.";
         if (msg.toLowerCase().includes("auth")) setSignedOut(true);
+        else if (msg.toLowerCase().includes("pro feature") || msg.toLowerCase().includes("upgrade")) setLocked(true);
         else setError(msg);
       })
       .finally(() => setLoading(false));
   }, []);
+
+  if (locked) {
+    return (
+      <AppShell>
+        <section className="analytics-grid hero-glow mx-auto max-w-2xl px-5 py-20 text-center fade-in">
+          <span className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-cyan-500/12 text-cyan-300">
+            <Lock size={28} />
+          </span>
+          <h1 className="display text-3xl text-[#eef2ff]">Performance history is a Pro feature</h1>
+          <p className="mx-auto mt-3 max-w-sm text-sm text-[#6b7a99]">
+            Upgrade to Pro to keep a full record of every session, with heatmaps, advanced
+            analytics, and downloadable reports.
+          </p>
+          <Link href="/pricing" className="btn-primary mt-8 inline-flex items-center gap-2 px-6 py-3 text-sm">
+            <Crown size={16} /> View plans
+          </Link>
+        </section>
+      </AppShell>
+    );
+  }
 
   if (signedOut) {
     return (

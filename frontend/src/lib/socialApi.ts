@@ -3,12 +3,17 @@ import { API_BASE } from "./api";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+export type MembershipTier = "free" | "pro" | "elite";
+export type TierBadge = "pro" | "elite" | null;
+
 export type User = {
   id: string;
   email: string;
   display_name: string;
   avatar_url?: string | null;
   created_at?: string;
+  tier?: MembershipTier;
+  badge?: TierBadge;
 };
 
 export type AuthResponse = { token: string; user: User };
@@ -23,6 +28,7 @@ export type LeaderboardEntry = {
   best_speed_kmh: number;
   best_power_kmh: number;
   best_technique: number;
+  badge?: TierBadge;
 };
 
 export type League = {

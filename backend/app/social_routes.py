@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
 from app import auth, db
-from app.services import achievements, connections, scoring
+from app.services import achievements, connections, scoring, subscriptions
 from app.services.storage import MEDIA_ROOT
 
 router = APIRouter()
@@ -107,6 +107,12 @@ def me(user: dict = Depends(auth.current_user)) -> dict:
 # ---------------------------------------------------------------------------
 @router.get("/history")
 def history(user: dict = Depends(auth.current_user)) -> dict:
+    # Performance history is a Pro+ feature.
+    if not subscriptions.has_feature(user["id"], "history"):
+        raise HTTPException(
+            status_code=402,
+            detail="Performance history is a Pro feature. Upgrade to unlock your full session history.",
+        )
     return {"uploads": scoring.uploads_for_user(user["id"])}
 
 

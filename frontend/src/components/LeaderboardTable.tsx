@@ -2,6 +2,7 @@
 
 import type { LeaderboardEntry, SortKey } from "@/lib/socialApi";
 import { Avatar } from "@/components/Avatar";
+import { TierBadge } from "@/components/TierBadge";
 import { Gauge, Sparkles, Target, Trophy, Upload } from "lucide-react";
 
 const SORTS: { key: SortKey; label: string; icon: React.ReactNode }[] = [
@@ -93,6 +94,7 @@ export function LeaderboardTable({
                       <span className="flex items-center gap-2">
                         <Avatar name={e.display_name} url={e.avatar_url} size={27} />
                         {e.display_name}
+                        <TierBadge badge={e.badge} size="xs" showLabel={false} />
                         {isMe && (
                           <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-400">
                             you

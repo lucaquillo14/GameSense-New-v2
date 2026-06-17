@@ -70,8 +70,9 @@ from app.services.storage import (
     video_metadata,
 )
 from app import auth, db
-from app.services import scoring
+from app.services import scoring, subscriptions
 from app.social_routes import router as social_router
+from app.billing_routes import router as billing_router
 
 app = FastAPI(title="GameSense AI Phase 1 API", version="0.1.0")
 
@@ -107,6 +108,8 @@ app.mount("/media", StaticFiles(directory=MEDIA_ROOT), name="media")
 
 # Accounts, leaderboard, and leagues.
 app.include_router(social_router)
+# Membership tiers, Stripe checkout, and billing.
+app.include_router(billing_router)
 
 
 @app.on_event("startup")
@@ -427,12 +430,29 @@ def set_pitch_polygon(payload: PitchSetupRequest) -> dict[str, object]:
 
 
 @app.post("/process-video")
-def process(payload: ProcessRequest) -> dict[str, str]:
+def process(payload: ProcessRequest, authorization: str | None = Header(default=None)) -> dict[str, str]:
     record = get_video_record(payload.video_id)
     if not record:
         raise HTTPException(status_code=404, detail="Video not found.")
     if payload.mode != "shooting_technique" and not record.get("target_player"):
         raise HTTPException(status_code=400, detail="Target player must be selected before processing.")
+
+    # Server-side membership enforcement: analyses require a signed-in user and
+    # are metered against the user's tier limits.
+    user_id = auth.user_id_from_header(authorization) or record.get("owner_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Sign in to run an analysis.")
+
+    quota = subscriptions.check_quota(user_id, payload.mode)
+    if not quota["allowed"]:
+        # 402 Payment Required — the frontend detects this to show an upgrade prompt.
+        raise HTTPException(status_code=402, detail=quota["reason"])
+
+    # Ensure the clip is owned by the processing user (older anonymous uploads).
+    if not record.get("owner_id"):
+        record["owner_id"] = user_id
+
+    subscriptions.record_analysis(user_id, payload.mode, payload.video_id)
 
     record["status"] = "processing"
     record["mode"] = payload.mode
@@ -486,6 +506,23 @@ def results(video_id: str) -> VideoResult:
             scoring.record_upload_score(record["owner_id"], record)
         except Exception as exc:  # never break results delivery over scoring
             print(f"[GameSense] Scoring skipped for {video_id}: {exc}")
+
+    # Membership gating: heatmaps are a Pro+ feature. Strip the URLs (so they
+    # can't be fetched) and flag the locked feature for an upgrade prompt when
+    # the clip owner is on a tier without access.
+    locked: list[str] = []
+    owner_id = record.get("owner_id")
+    if owner_id and not subscriptions.has_feature(owner_id, "heatmaps"):
+        assets = record.get("assets")
+        if isinstance(assets, dict) and (assets.get("movement_heatmap") or assets.get("touch_heatmap")):
+            assets = dict(assets)
+            assets["movement_heatmap"] = None
+            assets["touch_heatmap"] = None
+            assets["position_heatmap"] = None
+            assets["speed_heatmap"] = None
+            record = {**record, "assets": assets}
+            locked.append("heatmaps")
+    record = {**record, "locked_features": locked}
 
     return VideoResult.model_validate(record)
 

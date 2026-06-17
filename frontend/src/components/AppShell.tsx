@@ -1,11 +1,12 @@
 "use client";
 
-import { Clock, Gauge, LogIn, LogOut, Medal, Trophy, Upload, Users } from "lucide-react";
+import { Clock, Gauge, LogIn, LogOut, Medal, Sparkles, Trophy, Upload, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearAuth, getStoredUser, type User } from "@/lib/socialApi";
 import { Avatar } from "@/components/Avatar";
+import { TierBadge } from "@/components/TierBadge";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -79,6 +80,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {navItem("/leaderboard", <Trophy size={14} />, "Leaderboard")}
             {navItem("/leagues", <Users size={14} />, "Leagues")}
             {navItem("/history", <Clock size={14} />, "History")}
+            {navItem("/pricing", <Sparkles size={14} />, "Pricing")}
             {navItem("/profile", <Medal size={14} />, "Profile")}
           </nav>
 
@@ -92,6 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <Avatar name={user.display_name} url={user.avatar_url} size={27} />
                   <span className="hidden font-medium sm:inline">{user.display_name}</span>
+                  <TierBadge badge={user.badge} size="xs" showLabel={false} />
                 </Link>
                 <button
                   type="button"

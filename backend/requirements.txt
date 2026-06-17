@@ -12,3 +12,4 @@ supervision>=0.21.0
 mediapipe==0.10.14
 rfdetr>=0.1.0
 imageio[ffmpeg]>=2.34.0
+stripe>=11.0.0

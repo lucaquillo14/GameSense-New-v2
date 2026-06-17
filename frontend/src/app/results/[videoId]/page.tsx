@@ -9,7 +9,8 @@ import { WarningBanners } from "@/components/WarningBanners";
 import { VideoPlaybackOverlay } from "@/components/VideoPlaybackOverlay";
 import { getDetectionsOverlay, getFrame, getResults, mediaUrl, Metrics, ShotMetrics, VideoResult } from "@/lib/api";
 import type { DetectionsOverlay } from "@/lib/overlay";
-import { Activity, Crosshair, Footprints, Loader2, Route, Target, Trophy, Zap } from "lucide-react";
+import { Activity, Crosshair, Crown, Footprints, Loader2, Lock, Route, Target, Trophy, Zap } from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 type ResultsTab = "overview" | "heatmaps" | "playback";
@@ -172,12 +173,19 @@ export default function ResultsPage() {
         ) : null}
 
         {result?.status === "complete" && activeTab === "heatmaps" ? (
-          <HeatmapsPanel
-            movementUrl={result.assets?.movement_heatmap}
-            touchUrl={result.assets?.touch_heatmap}
-            touchCount={results?.touch_count}
-            passCount={results?.pass_count}
-          />
+          result.locked_features?.includes("heatmaps") ? (
+            <UpgradeLock
+              title="Heatmaps are a Pro feature"
+              body="Upgrade to Pro to unlock movement & touch heatmaps, advanced analytics, and downloadable reports."
+            />
+          ) : (
+            <HeatmapsPanel
+              movementUrl={result.assets?.movement_heatmap}
+              touchUrl={result.assets?.touch_heatmap}
+              touchCount={results?.touch_count}
+              passCount={results?.pass_count}
+            />
+          )
         ) : null}
 
         {/* ── Speed metrics ─────────────────────────────────────── */}
@@ -445,6 +453,25 @@ function TrackingResultWarnings({ metrics }: { metrics: Metrics }) {
           {warning}
         </p>
       ))}
+    </div>
+  );
+}
+
+function UpgradeLock({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="card relative overflow-hidden p-8 text-center">
+      <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-cyan-500/8 blur-3xl" />
+      <span className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-cyan-500/12 text-cyan-300">
+        <Lock size={24} />
+      </span>
+      <h3 className="font-display text-xl font-bold text-[#eef2ff]">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-[#6b7a99]">{body}</p>
+      <Link
+        href="/pricing"
+        className="btn-primary mt-6 inline-flex items-center gap-2 px-6 py-3 text-sm"
+      >
+        <Crown size={16} /> View plans
+      </Link>
     </div>
   );
 }

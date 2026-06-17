@@ -2,6 +2,7 @@
 
 import { AppShell } from "@/components/AppShell";
 import { Avatar } from "@/components/Avatar";
+import { TierBadge } from "@/components/TierBadge";
 import {
   followUser,
   getFollowing,
@@ -193,11 +194,20 @@ export default function ProfilePage() {
                 />
               </div>
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-[#f1f5f9]">{profile.user.display_name}</h1>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-3xl font-semibold tracking-tight text-[#f1f5f9]">{profile.user.display_name}</h1>
+                  <TierBadge badge={profile.user.badge} size="md" />
+                </div>
                 <p className="mt-0.5 text-sm text-[#64748b]">
                   {profile.earned_count} badges · {profile.follow_counts.following} following ·{" "}
                   {profile.follow_counts.followers} followers
                 </p>
+                <Link
+                  href="/billing"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300"
+                >
+                  Manage membership →
+                </Link>
               </div>
             </div>
 

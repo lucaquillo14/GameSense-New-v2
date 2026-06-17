@@ -94,6 +94,37 @@ Schedule the backup script on the server (cron) — the database holds every acc
 
 Even better: copy `/var/gamesense-backups` off-box (e.g. to S3/Backblaze) so a server loss doesn't lose the backups too.
 
+## 5b. Stripe billing (memberships)
+
+GameSense has three tiers — **Free**, **Pro**, **Elite** — enforced server-side.
+Billing runs on Stripe. Without Stripe configured the app still works: everyone
+is Free, and the pricing page shows a "checkout isn't live" notice.
+
+**One-time Stripe setup:**
+1. In the Stripe Dashboard, create two **recurring (monthly)** Products/Prices:
+   "GameSense Pro" and "GameSense Elite". Copy each **price id** (`price_...`).
+2. Add a **webhook endpoint** pointing at `https://api.yourdomain.com/billing/webhook`
+   and subscribe to: `checkout.session.completed`,
+   `customer.subscription.created/updated/deleted`,
+   `invoice.payment_succeeded`, `invoice.payment_failed`. Copy the **signing
+   secret** (`whsec_...`).
+
+**Backend env vars (add to `backend/.env`):**
+
+| Variable | Purpose |
+| --- | --- |
+| `STRIPE_SECRET_KEY` | `sk_live_...` / `sk_test_...` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_...` from the webhook endpoint |
+| `STRIPE_PRICE_PRO` | `price_...` for the Pro plan |
+| `STRIPE_PRICE_ELITE` | `price_...` for the Elite plan |
+| `FRONTEND_URL` | e.g. `https://yourdomain.com` — used for checkout redirect URLs |
+
+`pip install -r requirements.txt` now also pulls in `stripe`.
+
+Limits/feature gating live in `backend/app/services/subscriptions.py` — the single
+source of truth. Usage resets are automatic (rolling weekly/monthly windows), so
+there is no cron job to run.
+
 ## 6. Scaling note
 
 Each sprint analysis is CPU-heavy and the app processes ~2 at a time (`_cv_executor`). A few simultaneous users will queue. If usage grows, move to a bigger CPU box (or a GPU instance) and consider a proper job queue. Fine for launch; revisit when you have real traffic.
