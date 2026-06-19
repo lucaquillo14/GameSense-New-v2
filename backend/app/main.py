@@ -94,9 +94,17 @@ _allowed_origins = [
     ).split(",")
     if origin.strip()
 ]
+# Also allow any Vercel deployment (production + preview/branch URLs), and any
+# localhost port, so the frontend works regardless of which deploy it's served
+# from. An explicit env list still works for custom domains.
+_origin_regex = os.environ.get(
+    "GAMESENSE_ALLOWED_ORIGIN_REGEX",
+    r"https://([a-z0-9-]+\.)*vercel\.app|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
+    allow_origin_regex=_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
